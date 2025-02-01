@@ -7,6 +7,11 @@ app = Flask(__name__)
 with open('data.json', 'r', encoding='utf-8') as file:
     data = json.load(file)
 
+# Default Route
+@app.route('/')
+def home():
+    return "NFC-CALS Server is Running!"
+
 # GET Endpoint: Fetch all students
 @app.route('/students', methods=['GET'])
 def get_students():
@@ -28,6 +33,50 @@ def get_student(student_id):
     if student:
         return jsonify(student)
     return jsonify({"error": "Student not found"}), 404
+
+# GET Endpoint: Fetch all instructors
+@app.route('/instructors', methods=['GET'])
+def get_instructors():
+    return jsonify(data['instructors'])
+
+# POST Endpoint: Add a new instructor
+@app.route('/instructors', methods=['POST'])
+def add_instructor():
+    new_instructor = request.json
+    data['instructors'].append(new_instructor)
+    with open('data.json', 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+    return jsonify({"message": "Instructor added successfully!"}), 201
+
+# GET Endpoint: Fetch specific instructor by employee ID
+@app.route('/instructors/<int:employee_id>', methods=['GET'])
+def get_instructor(employee_id):
+    instructor = next((i for i in data['instructors'] if i['employee_id'] == employee_id), None)
+    if instructor:
+        return jsonify(instructor)
+    return jsonify({"error": "Instructor not found"}), 404
+
+# GET Endpoint: Fetch all classes
+@app.route('/classes', methods=['GET'])
+def get_classes():
+    return jsonify(data['classes'])
+
+# POST Endpoint: Add a new class
+@app.route('/classes', methods=['POST'])
+def add_class():
+    new_class = request.json
+    data['classes'].append(new_class)
+    with open('data.json', 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+    return jsonify({"message": "Class added successfully!"}), 201
+
+# GET Endpoint: Fetch specific class by class number
+@app.route('/classes/<string:class_number>', methods=['GET'])
+def get_class(class_number):
+    class_data = next((c for c in data['classes'] if c['class_number'] == class_number), None)
+    if class_data:
+        return jsonify(class_data)
+    return jsonify({"error": "Class not found"}), 404
 
 # Run the server
 if __name__ == '__main__':
