@@ -1,0 +1,1 @@
+ C:\\Users\\ahmdd\\OneDrive\ -\ King\ Suad\ University\\Desktop\\loginscreenDart\\loginscreendart\\.dart_tool\\flutter_build\\ffc72be143c9291783b54d2541dbed80\\native_assets.yaml: 
