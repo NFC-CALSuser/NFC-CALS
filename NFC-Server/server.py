@@ -78,6 +78,28 @@ def get_class(class_number):
         return jsonify(class_data)
     return jsonify({"error": "Class not found"}), 404
 
+# ✅ NEW: GET Endpoint - Fetch all courses
+@app.route('/courses', methods=['GET'])
+def get_courses():
+    return jsonify(data['courses'])
+
+# ✅ NEW: POST Endpoint - Add a new course
+@app.route('/courses', methods=['POST'])
+def add_course():
+    new_course = request.json
+    data['courses'].append(new_course)
+    with open('data.json', 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+    return jsonify({"message": "Course added successfully!"}), 201
+
+# ✅ NEW: GET Endpoint - Fetch a specific course by course code
+@app.route('/courses/<string:course_code>', methods=['GET'])
+def get_course(course_code):
+    course = next((c for c in data['courses'] if c['course_code'] == course_code), None)
+    if course:
+        return jsonify(course)
+    return jsonify({"error": "Course not found"}), 404
+
 # Run the server
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
