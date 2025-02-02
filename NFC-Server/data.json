@@ -2,25 +2,25 @@
     "students": [
       {
         "id": 442106884,
-        "name": "ريان احمد الزهراني"
+        "name": "Rayan Ahmed Alzahrani"
       },
       {
         "id": 442106889,
-        "name": "عبدالله فايز السواط"
+        "name": "Abdullah Faiz Alsawat"
       },
       {
         "id": 442100881,
-        "name": "عبدالرحمن سعيد المالكي"
+        "name": "Abdulrahman Saeed Almalki"
       },
       {
         "id": 442106882,
-        "name": "محمد فهد العريفي"
+        "name": "Mohammed Fahad Alarifi"
       }
     ],
     "instructors": [
       {
         "employee_id": 202412001,
-        "name": "د. فهد محمد القحطاني"
+        "name": "Dr. Fahad Alqahtani"
       }
     ],
     "courses": [
