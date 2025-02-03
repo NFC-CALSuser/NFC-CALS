@@ -39,6 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
     {'email': 'user2@example.com', 'password': 'password2'},
     {'email': 'admin', 'password': 'admin'},
     {'email': '442106884', 'password': '442106884'}, // Add student credentials
+    {'email': 'inst', 'password': 'inst'}, // Add instructor credentials
   ];
 
   void _login() {
@@ -59,6 +60,11 @@ class _LoginScreenState extends State<LoginScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const StudentDashboard()),
+          );
+        } else if (email == 'inst' && password == 'inst') { // Add instructor navigation
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const InstructorDashboard()),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -412,6 +418,69 @@ class StudentDashboard extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                 ),
                 child: const Text('View Attendance History'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class InstructorDashboard extends StatelessWidget {
+  const InstructorDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Instructor Dashboard'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Container(
+        color: Colors.white,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/images/ksu_shieldlogo_colour_rgb.png',
+                width: 90,
+                height: 90,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Dr. Mohammed Abdullah',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+              const SizedBox(height: 40),
+              ElevatedButton(
+                onPressed: () {
+                  // Handle start session
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                ),
+                child: const Text('Start Session'),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  // Handle view attendance reports
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                ),
+                child: const Text('View Attendance Reports'),
               ),
             ],
           ),
