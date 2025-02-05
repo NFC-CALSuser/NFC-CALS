@@ -2,25 +2,39 @@
     "students": [
       {
         "id": 442106884,
-        "name": "Rayan Ahmed Alzahrani"
+        "name": "Rayan Ahmed Alzahrani",
+        "email": "442106889@student.ksu.edu.sa",
+        "password": "$$0xAhM3d_*Rs1F",
+        "nfc_id": 628957164912484
       },
       {
         "id": 442106889,
-        "name": "Abdullah Faiz Alsawat"
+        "name": "Abdullah Faiz Alsawat",
+        "email": "442106889@student.ksu.edu.sa",
+        "password": "$$0xF1iZ_*Rs1F",
+        "nfc_id": 628957164912489
       },
       {
         "id": 442100881,
-        "name": "Abdulrahman Saeed Almalki"
+        "name": "Abdulrahman Saeed Almalki",
+        "email": "442106889@student.ksu.edu.sa",
+        "password": "$$0x51e3d_*Rs1F",
+        "nfc_id": 628957164912481
       },
       {
         "id": 442106882,
-        "name": "Mohammed Fahad Alarifi"
+        "name": "Mohammed Fahad Alarifi",
+        "email": "442106889@student.ksu.edu.sa",
+        "password": "$$0xMo71m3d_*Rs1F",
+        "nfc_id": 628957164912482
       }
     ],
     "instructors": [
       {
-        "employee_id": 202412001,
-        "name": "Dr. Fahad Alqahtani"
+        "name": "Dr. Fahad Alqahtani",
+        "email": "fmalgahtani@ksu.edu.sa",
+        "password": "$$0xFa#1d_*K5%u",
+        "nfc_id": 628957164912401
       }
     ],
     "courses": [
@@ -30,10 +44,7 @@
     ],
     "classes": [
       {
-        "class_number": "G-064"
-      },
-      {
-        "class_number": "G-062"
+        "class_number": "G-090"
       }
     ]
   }
