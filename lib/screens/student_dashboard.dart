@@ -7,7 +7,7 @@ class StudentDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Student Dashboard'),
+        title: const Text('KSU-Attendance System'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -86,7 +86,7 @@ class StudentDashboard extends StatelessWidget {
                               color: Colors.white,
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
+                              letterSpacing: 0,
                             ),
                           ),
                           const SizedBox(height: 15),
@@ -113,16 +113,34 @@ class StudentDashboard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: () {
-                  // Handle viewing attendance history
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+              SizedBox(
+                width: 300, // Match card width
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Handle viewing attendance history
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.history, color: Colors.white),
+                      SizedBox(width: 10),
+                      Text(
+                        'View Attendance History',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Text('View Attendance History'),
               ),
             ],
           ),
