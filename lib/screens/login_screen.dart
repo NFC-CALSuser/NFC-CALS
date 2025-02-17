@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'admin_screen.dart';
+import '../services/auth_service.dart';
 import 'student_dashboard.dart';
 import 'instructor_dashboard.dart';
 
@@ -12,53 +12,58 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _idController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscureText = true;
+  bool _isLoading = false;
 
-  final List<Map<String, String>> _users = [
-    {'email': 'user1@example.com', 'password': 'password1'},
-    {'email': 'user2@example.com', 'password': 'password2'},
-    {'email': 'admin', 'password': 'admin'},
-    {'email': '442106884', 'password': '442106884'},
-    {'email': 'inst', 'password': 'inst'},
-  ];
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  void _login() {
-    if (_formKey.currentState!.validate()) {
-      String email = _emailController.text;
-      String password = _passwordController.text;
+    setState(() => _isLoading = true);
 
-      bool userFound = _users.any(
-          (user) => user['email'] == email && user['password'] == password);
+    try {
+      final result = await AuthService.login(
+        _idController.text,
+        _passwordController.text,
+      );
 
-      if (userFound) {
-        if (email == 'admin' && password == 'admin') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AdminScreen()),
-          );
-        } else if (email == '442106884' && password == '442106884') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const StudentDashboard()),
-          );
-        } else if (email == 'inst' && password == 'inst') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const InstructorDashboard()),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Login successful!')),
-          );
-        }
-      } else {
+      if (!mounted) return;
+
+      if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid email or password')),
+          const SnackBar(content: Text('Invalid ID or password')),
+        );
+        return;
+      }
+
+      // Navigate based on user type
+      if (result['type'] == 'student') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => StudentDashboard(
+              studentData: result['data'],
+            ),
+          ),
+        );
+      } else if (result['type'] == 'instructor') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => InstructorDashboard(
+              instructorName: result['data']
+                  ['name'], // Use the actual name from data
+            ),
+          ),
         );
       }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -109,16 +114,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
+                        controller: _idController,
                         decoration: const InputDecoration(
-                          labelText: 'Email',
-                          prefixIcon: Icon(Icons.email),
+                          labelText: 'ID',
+                          prefixIcon: Icon(Icons.person),
                           border: OutlineInputBorder(),
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter your email';
+                            return 'Please enter your ID';
                           }
                           return null;
                         },
@@ -155,39 +159,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _login,
+                          onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
-                          child: const Text(
-                            'Login',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Color.fromARGB(255, 231, 225, 225),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                // Handle forgot password action
-                              },
-                              child: const Text('Forgot Password?'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                // Handle sign up action
-                              },
-                              child: const Text('Sign Up'),
-                            ),
-                          ],
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
+                              : const Text(
+                                  'Login',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -199,5 +186,12 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _idController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 }

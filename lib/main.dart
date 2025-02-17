@@ -11,11 +11,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Login Screen',
+      title: 'KSU-Attendance System',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const LoginScreen(),
+      initialRoute: '/', // Add this line
+      routes: {
+        '/': (context) => const LoginScreen(),
+      },
     );
   }
 }

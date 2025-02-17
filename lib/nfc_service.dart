@@ -1,67 +1,75 @@
 import 'package:nfc_manager/nfc_manager.dart';
 import 'dart:typed_data';
+import 'dart:async';
 
 class NFCService {
   static Future<bool> isAvailable() async {
     return await NfcManager.instance.isAvailable();
   }
 
-  static Future<String> readNFCTag() async {
-    String result = '';
-    
-    try {
-      await NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
+  static Future<String> readNFCTag() {
+    Completer<String> completer = Completer<String>();
+
+    NfcManager.instance
+        .startSession(
+      invalidateAfterFirstRead: true,
+      onDiscovered: (NfcTag tag) async {
         try {
           var ndef = Ndef.from(tag);
           if (ndef == null) {
-            result = 'Tag is not NDEF formatted';
+            completer.complete('Tag is not NDEF formatted');
             await NfcManager.instance.stopSession();
             return;
           }
 
           var ndefMessage = await ndef.read();
           if (ndefMessage.records.isEmpty) {
-            result = 'No NDEF records found';
+            completer.complete('No NDEF records found');
             await NfcManager.instance.stopSession();
             return;
           }
 
           var record = ndefMessage.records.first;
+          String content = '';
+
           if (record.typeNameFormat == NdefTypeNameFormat.nfcWellknown) {
-            // Skip the language code (first 3 bytes) for Text records
             var payload = record.payload;
             if (payload.length > 3) {
-              result = String.fromCharCodes(payload.sublist(3));
+              content = String.fromCharCodes(payload.sublist(3));
             }
           }
-          
+
+          completer.complete(content);
           await NfcManager.instance.stopSession();
         } catch (e) {
-          result = 'Error reading tag: $e';
+          completer.completeError('Error reading tag: $e');
           await NfcManager.instance.stopSession();
         }
-      });
-    } catch (e) {
-      result = 'Error starting NFC session: $e';
-    }
-    
-    return result;
+      },
+    )
+        .catchError((e) {
+      completer.completeError('Error starting NFC session: $e');
+    });
+
+    return completer.future;
   }
 
   static Future<bool> writeNFCTag(String data) async {
     bool success = false;
-    
+
     try {
       await NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
         try {
           var ndef = Ndef.from(tag);
           if (ndef == null) {
-            await NfcManager.instance.stopSession(errorMessage: 'Tag is not NDEF formatted');
+            await NfcManager.instance
+                .stopSession(errorMessage: 'Tag is not NDEF formatted');
             return;
           }
 
           if (!ndef.isWritable) {
-            await NfcManager.instance.stopSession(errorMessage: 'Tag is not writable');
+            await NfcManager.instance
+                .stopSession(errorMessage: 'Tag is not writable');
             return;
           }
 
@@ -86,7 +94,7 @@ class NFCService {
     } catch (e) {
       print('Error starting NFC session: $e');
     }
-    
+
     return success;
   }
 }
