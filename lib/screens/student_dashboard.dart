@@ -1,7 +1,48 @@
 import 'package:flutter/material.dart';
+import '../nfc_service.dart';
+import 'dart:convert';
 
 class StudentDashboard extends StatelessWidget {
   const StudentDashboard({super.key});
+
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _markAttendance(BuildContext context) async {
+    bool available = await NFCService.isAvailable();
+    if (!available) {
+      _showMessage(context, 'NFC is not available on this device');
+      return;
+    }
+
+    _showMessage(context, 'Hold your device near the classroom NFC tag');
+    String result = await NFCService.readNFCTag();
+    
+    try {
+      // Parse the JSON data from the NFC tag
+      Map<String, dynamic> sessionData = jsonDecode(result);
+      
+      if (sessionData['status'] == 'active') {
+        DateTime startTime = DateTime.parse(sessionData['startTime']);
+        DateTime now = DateTime.now();
+        Duration difference = now.difference(startTime);
+        
+        // Check if within the 50-minute window
+        if (difference.inMinutes <= int.parse(sessionData['duration'])) {
+          _showMessage(context, 'Attendance marked successfully for ${sessionData['instructor']}\'s class!');
+        } else {
+          _showMessage(context, 'Session has expired. Please contact your instructor.');
+        }
+      } else {
+        _showMessage(context, 'No active session found on this tag');
+      }
+    } catch (e) {
+      _showMessage(context, 'Invalid session data. Please contact your instructor.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +127,7 @@ class StudentDashboard extends StatelessWidget {
                               color: Colors.white,
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 0,
+                              letterSpacing: 2,
                             ),
                           ),
                           const SizedBox(height: 15),
