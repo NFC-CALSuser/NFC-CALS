@@ -12,6 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  nfc_manager: ^3.3.0  # Add this line
 
 dev_dependencies:
   flutter_test:
