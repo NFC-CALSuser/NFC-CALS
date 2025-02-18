@@ -22,5 +22,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/ksu_shieldlogo_colour_rgb.png
+    - assets/images/
     - NFC-Server/data.json

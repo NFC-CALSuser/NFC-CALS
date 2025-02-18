@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'student_dashboard.dart';
 import 'instructor_dashboard.dart';
+import 'admin_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,6 +56,13 @@ class _LoginScreenState extends State<LoginScreen> {
               instructorName: result['data']
                   ['name'], // Use the actual name from data
             ),
+          ),
+        );
+      } else if (result['type'] == 'admin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const AdminScreen(),
           ),
         );
       }

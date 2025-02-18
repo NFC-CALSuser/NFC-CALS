@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../nfc_service.dart';
+import 'login_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -13,6 +14,14 @@ class _AdminScreenState extends State<AdminScreen> {
   bool _isReading = false;
   bool _isWriting = false;
   final TextEditingController _writeController = TextEditingController();
+
+  void _handleSignOut(BuildContext context) {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
+  }
 
   Future<void> _handleReadTag() async {
     setState(() {
@@ -52,14 +61,13 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _handleWriteTag() async {
-    // Show dialog to input content
     String? content = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Write to Tag'),
         content: TextField(
           controller: _writeController,
-          maxLength: 540, // Limit to 540 bytes
+          maxLength: 540,
           decoration: const InputDecoration(
             hintText: 'Enter content to write',
           ),
@@ -135,7 +143,11 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('KSU-Attendance System'),
+        title: const Text('Admin NFC Management'),
+        leading: IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () => _handleSignOut(context),
+        ),
       ),
       body: Container(
         color: Colors.white,
@@ -166,55 +178,43 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
                 const SizedBox(height: 20),
               ],
-              Container(
-                width: 300, // Match the width of student dashboard card
+              SizedBox(
+                width: 300,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     Expanded(
-                      child: ElevatedButton(
+                      child: ElevatedButton.icon(
                         onPressed: _isReading ? null : _handleReadTag,
+                        icon: const Icon(Icons.nfc, color: Colors.white),
+                        label: Text(
+                          _isReading ? 'Reading...' : 'Read Tag',
+                          style: const TextStyle(color: Colors.white),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue,
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.nfc, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text(
-                              _isReading ? 'Reading...' : 'Read Tag',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ],
                         ),
                       ),
                     ),
-                    SizedBox(width: 16),
+                    const SizedBox(width: 16),
                     Expanded(
-                      child: ElevatedButton(
+                      child: ElevatedButton.icon(
                         onPressed: _isWriting ? null : _handleWriteTag,
+                        icon: const Icon(Icons.edit, color: Colors.white),
+                        label: Text(
+                          _isWriting ? 'Writing...' : 'Write Tag',
+                          style: const TextStyle(color: Colors.white),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue,
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.edit, color: Colors.white),
-                            SizedBox(width: 8),
-                            Text(
-                              _isWriting ? 'Writing...' : 'Write Tag',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ],
                         ),
                       ),
                     ),
