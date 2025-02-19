@@ -1,0 +1,18 @@
+{
+  "instructors": [
+    {
+      "id": "20242024",
+      "name": "Dr. Fahad Alqahtani",
+      "email": "fmalgahtani@ksu.edu.sa",
+      "password": "1234",
+      "nfc_id": 628957164912401
+    },
+    {
+      "id": "20252025",
+      "name": "Dr. Esa Algonaim",
+      "email": "esa@ksu.edu.sa",
+      "password": "1234",
+      "nfc_id": 628957164912402
+    }
+  ]
+}
