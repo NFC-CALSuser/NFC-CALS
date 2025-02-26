@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class AuthService {
@@ -52,6 +53,10 @@ class AuthService {
       }
 
       return null;
+    } on SocketException {
+      throw const ConnectionException('No internet connection');
+    } on HttpException {
+      throw const ConnectionException('Could not connect to the server');
     } catch (e) {
       throw Exception('Failed to authenticate: $e');
     }
@@ -74,4 +79,9 @@ class AuthService {
     }
     throw Exception('Failed to load classes');
   }
+}
+
+class ConnectionException implements Exception {
+  final String message;
+  const ConnectionException(this.message);
 }
