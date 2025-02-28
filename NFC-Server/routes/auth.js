@@ -6,25 +6,19 @@ const instructors = require('./instructors');
 
 // ...existing code...
 
-router.post('/login', async (req, res) => {
+router.post('/login', (req, res) => {
     const { email, password } = req.body;
     
     // For students
     const student = students.find(s => s.email === email);
-    if (student) {
-        const isMatch = await bcrypt.compare(password, student.password);
-        if (isMatch) {
-            // ...existing login success code...
-        }
+    if (student && student.password === password) {
+        // ...existing login success code...
     }
 
     // For instructors
     const instructor = instructors.find(i => i.email === email);
-    if (instructor) {
-        const isMatch = await bcrypt.compare(password, instructor.password);
-        if (isMatch) {
-            // ...existing login success code...
-        }
+    if (instructor && instructor.password === password) {
+        // ...existing login success code...
     }
 
     // ...existing error handling code...

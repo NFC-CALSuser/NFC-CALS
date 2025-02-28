@@ -4,14 +4,14 @@
       "id": "20242024",
       "name": "Dr. Fahad Alqahtani",
       "email": "fmalgahtani@ksu.edu.sa",
-      "password": "$2b$10$2WayoM1TVqAu/7oDKLR9O.AEQ.xPVJT7bNyAN1QkyAqqs.8khv5Y2",
+      "password": "1234",
       "nfc_id": 628957164912401
     },
     {
       "id": "20252025",
       "name": "Dr. Esa Algonaim",
       "email": "esa@ksu.edu.sa",
-      "password": "$2b$10$7YzjY4wo4v05dcVjvo6y2Okq8BBM1t/RbkVb6/EFK8hJyMAegIaTq",
+      "password": "4321",
       "nfc_id": 628957164912402
     }
   ]
