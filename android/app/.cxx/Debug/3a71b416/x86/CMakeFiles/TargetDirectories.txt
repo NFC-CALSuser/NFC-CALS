@@ -1,0 +1,2 @@
+C:/Users/ahmdd/OneDrive - King Suad University/Desktop/NFC-CALSLast/NFC-CALS/android/app/.cxx/Debug/3a71b416/x86/CMakeFiles/edit_cache.dir
+C:/Users/ahmdd/OneDrive - King Suad University/Desktop/NFC-CALSLast/NFC-CALS/android/app/.cxx/Debug/3a71b416/x86/CMakeFiles/rebuild_cache.dir
