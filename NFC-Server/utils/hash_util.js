@@ -2,8 +2,22 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+// This should be stored in environment variables in production
+const SECRET_KEY = '4a9c5c2e89f340c399a6a3f3928021f48920a206e09c4336b580bacbb34e3034';
+
+function createHMAC(password) {
+    return crypto.createHmac('sha256', SECRET_KEY)
+        .update(password)
+        .digest('hex');
+}
+
+function verifyPassword(inputPassword, storedPassword) {
+    const hmac = createHMAC(inputPassword);
+    return hmac === storedPassword;
+}
+
 function hashPassword(password) {
-    return crypto.createHash('sha256').update(password).digest('hex');
+    return createHMAC(password);
 }
 
 // Hash all passwords in files
@@ -27,4 +41,4 @@ function hashAllPasswords() {
     console.log('All passwords have been hashed successfully!');
 }
 
-module.exports = { hashPassword, hashAllPasswords };
+module.exports = { createHMAC, verifyPassword, hashPassword, hashAllPasswords };
