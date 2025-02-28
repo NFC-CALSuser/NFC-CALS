@@ -2,9 +2,9 @@
   "students": [
     {
       "id": 442106884,
-      "name": "Rayanooooo Ahmed Alzahrani",
+      "name": "Rayan Ahmed Alzahrani",
       "email": "442106884@student.ksu.edu.sa",
-      "password": "Rs1F",
+      "password": "8a7dcf339e85e77b582b1a686319c6219b832a6f143b9cf89ed11007219fbfe6",
       "nfc_id": 628957164912484,
       "attendance": []
     },
@@ -12,7 +12,7 @@
       "id": 442106889,
       "name": "Abdullah Faiz Alsawat",
       "email": "442106889@student.ksu.edu.sa",
-      "password": "$$Rs1F",
+      "password": "1bb82460d8d0da25941633da7f720e5c705d41df4afb56d301ee97399a9ad2ff",
       "nfc_id": 628957164912489,
       "attendance": []
     },
@@ -20,7 +20,7 @@
       "id": 442100881,
       "name": "Abdulrahman Saeed Almalki",
       "email": "442100881@student.ksu.edu.sa",
-      "password": "$Rs1F",
+      "password": "260d1ba5905615a4ef3bd0cc0c950e71fc10393172550c76e68365a732db9446",
       "nfc_id": 628957164912481,
       "attendance": []
     },
@@ -28,7 +28,7 @@
       "id": 442106882,
       "name": "Mohammed Fahad Alarifi",
       "email": "442106882@student.ksu.edu.sa",
-      "password": "$$$Rs1F",
+      "password": "487476b470a704e5bdc840d0baf4e4397d892a9dcc882fee97a420b4765d6115",
       "nfc_id": 628957164912482,
       "attendance": []
     }
