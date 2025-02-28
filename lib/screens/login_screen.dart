@@ -25,7 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final result = await AuthService.login(
-        _idController.text,
+        _idController.text, // Using ID directly
         _passwordController.text,
       );
 
