@@ -176,6 +176,28 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    // TODO: Implement attendance history view
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.history),
+                      SizedBox(width: 8),
+                      Text('View Attendance History'),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

@@ -180,6 +180,28 @@ class StudentDashboard extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    // TODO: Implement absence percentages view
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.percent),
+                      SizedBox(width: 8),
+                      Text('Absence Percentages'),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

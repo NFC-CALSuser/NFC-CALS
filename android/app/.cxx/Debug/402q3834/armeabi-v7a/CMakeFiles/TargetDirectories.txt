@@ -1,0 +1,2 @@
+D:/FlutterProjects/NFC-CALS-LAST/NFC-CALS/android/app/.cxx/Debug/402q3834/armeabi-v7a/CMakeFiles/edit_cache.dir
+D:/FlutterProjects/NFC-CALS-LAST/NFC-CALS/android/app/.cxx/Debug/402q3834/armeabi-v7a/CMakeFiles/rebuild_cache.dir
