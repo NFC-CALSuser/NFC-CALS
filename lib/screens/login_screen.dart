@@ -53,8 +53,8 @@ class _LoginScreenState extends State<LoginScreen> {
           context,
           MaterialPageRoute(
             builder: (context) => InstructorDashboard(
-              instructorName: result['data']
-                  ['name'], // Use the actual name from data
+              instructorName: result['data']['name'],
+              instructorId: _idController.text, // Add the instructor ID
             ),
           ),
         );

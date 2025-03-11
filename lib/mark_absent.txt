@@ -1,0 +1,141 @@
+# Define API endpoints
+$attendanceUrl = "https://cals-server-12aff9883ee5.herokuapp.com/attendance"
+$instructorViewUrl = "https://cals-server-12aff9883ee5.herokuapp.com/instructor_view"
+$studentsViewUrl = "https://cals-server-12aff9883ee5.herokuapp.com/students_view"
+
+# First, get all the data we need
+try {
+    $attendanceData = Invoke-RestMethod -Uri $attendanceUrl -Method Get
+    $instructorViewData = Invoke-RestMethod -Uri $instructorViewUrl -Method Get
+    $studentsViewData = Invoke-RestMethod -Uri $studentsViewUrl -Method Get
+}
+catch {
+    Write-Error "Error getting data: $_"
+    exit
+}
+
+# Process the most recent attendance record
+$latestAttendance = $attendanceData | Sort-Object -Property date -Descending | Select-Object -First 1
+
+Write-Output "Processing attendance record from: $($latestAttendance.date)"
+
+$courseId = $latestAttendance.course_id
+$instructorId = $latestAttendance.instructor_id
+$presentStudents = $latestAttendance.students_ids
+$attendanceDate = ($latestAttendance.date -split " ")[0]  # Extract just the date part
+$formattedDate = [DateTime]::ParseExact($attendanceDate, "yyyy-MM-dd", $null).ToString("dd-MM-yyyy")
+
+Write-Output "Course: $courseId, Instructor: $instructorId"
+Write-Output "Present students: $($presentStudents -join ', ')"
+Write-Output "Attendance date (formatted): $formattedDate"
+
+# Create copies of data to modify
+$updatedInstructorData = $instructorViewData | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+$updatedStudentsData = $studentsViewData | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+
+# Make sure the instructor and course exist in the data
+if (-not $updatedInstructorData.$instructorId -or 
+    -not $updatedInstructorData.$instructorId.courses.$courseId) {
+    Write-Error "Instructor or course not found in instructor view"
+    exit
+}
+
+# Get all students enrolled in this course from the instructor view
+$enrolledStudents = $updatedInstructorData.$instructorId.courses.$courseId.students.PSObject.Properties.Name
+
+Write-Output "Enrolled students: $($enrolledStudents -join ', ')"
+
+# Track which students were marked absent
+$absentStudents = @()
+
+# === Update instructor_view ===
+foreach ($studentId in $enrolledStudents) {
+    # Check if student was present
+    if ($presentStudents -contains $studentId) {
+        Write-Output "Student $studentId was present"
+        continue
+    }
+    
+    # Student was absent - update instructor view
+    $student = $updatedInstructorData.$instructorId.courses.$courseId.students.$studentId
+    
+    # Parse current percentage
+    $currentPercentage = [int]($student.current_percentage -replace '%', '')
+    $newPercentage = $currentPercentage + 3
+    $student.current_percentage = "$newPercentage%"
+    
+    # Add absence date if not already present
+    if ($null -eq $student.absence_dates) {
+        $student.absence_dates = @($formattedDate)
+    } else {
+        if ($student.absence_dates -notcontains $formattedDate) {
+            $student.absence_dates += $formattedDate
+        }
+    }
+    
+    $absentStudents += $studentId
+    Write-Output "Marked student $studentId absent in instructor view"
+}
+
+# === Update students_view ===
+foreach ($student in $updatedStudentsData.read_only) {
+    $studentId = $student.student_id
+    
+    # Skip if student wasn't absent
+    if ($absentStudents -notcontains $studentId) {
+        continue
+    }
+    
+    # Find the course for this student
+    foreach ($course in $student.courses) {
+        if ($course.course -eq $courseId) {
+            # Parse current percentage
+            $currentPercentage = [int]($course.current_percentage -replace '%', '')
+            $newPercentage = $currentPercentage + 3
+            $course.current_percentage = "$newPercentage%"
+            
+            # Add absence date if not already present
+            if ($null -eq $course.absence_dates) {
+                $course.absence_dates = @($formattedDate)
+            } else {
+                if ($course.absence_dates -notcontains $formattedDate) {
+                    $course.absence_dates += $formattedDate
+                }
+            }
+            
+            Write-Output "Marked student $studentId absent in students view"
+            break
+        }
+    }
+}
+
+# === Save the updated data ===
+$headers = @{
+    "Content-Type" = "application/json"
+}
+
+# Update instructor view
+try {
+    $instructorBody = $updatedInstructorData | ConvertTo-Json -Depth 10
+    $updateResult = Invoke-RestMethod -Uri $instructorViewUrl -Method Put -Body $instructorBody -Headers $headers
+    Write-Output "Successfully updated instructor view"
+}
+catch {
+    Write-Error "Error updating instructor view: $_"
+}
+
+# Update students view
+try {
+    $studentsBody = $updatedStudentsData | ConvertTo-Json -Depth 10
+    $updateResult = Invoke-RestMethod -Uri $studentsViewUrl -Method Put -Body $studentsBody -Headers $headers
+    Write-Output "Successfully updated students view"
+}
+catch {
+    Write-Error "Error updating students view: $_"
+}
+
+# Summary
+Write-Output "`nSummary:"
+Write-Output "Total enrolled students: $($enrolledStudents.Count)"
+Write-Output "Present students: $($presentStudents.Count) - $($presentStudents -join ', ')"
+Write-Output "Absent students: $($absentStudents.Count) - $($absentStudents -join ', ')"

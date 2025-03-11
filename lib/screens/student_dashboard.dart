@@ -29,28 +29,65 @@ class StudentDashboard extends StatelessWidget {
     String result = await NFCService.readNFCTag();
 
     try {
-      // Parse the JSON data from the NFC tag
       Map<String, dynamic> sessionData = jsonDecode(result);
 
       if (sessionData['status'] == 'active') {
-        DateTime startTime = DateTime.parse(sessionData['startTime']);
-        DateTime now = DateTime.now();
-        Duration difference = now.difference(startTime);
+        // Get current attendance record
+        final getResponse = await http.get(
+          Uri.parse(
+              'https://cals-server-12aff9883ee5.herokuapp.com/attendance/${sessionData['record_id']}'),
+        );
 
-        // Check if within the 50-minute window
-        if (difference.inMinutes <= int.parse(sessionData['duration'])) {
-          _showMessage(context,
-              'Attendance marked successfully for ${sessionData['instructor']}\'s class!');
-        } else {
-          _showMessage(
-              context, 'Session has expired. Please contact your instructor.');
+        if (getResponse.statusCode == 200) {
+          final currentRecord = jsonDecode(getResponse.body);
+
+          // First check session status
+          if (currentRecord['status'] == 'ended') {
+            _showMessage(context, 'Session has ended.');
+            return;
+          }
+
+          // Then check time window
+          DateTime startTime = DateTime.parse(sessionData['startTime']);
+          DateTime now = DateTime.now();
+          Duration difference = now.difference(startTime);
+
+          if (difference.inMinutes <= int.parse(sessionData['duration'])) {
+            final currentStudentIds =
+                List<String>.from(currentRecord['students_ids'] ?? []);
+
+            if (!currentStudentIds.contains(studentData['id'].toString())) {
+              currentStudentIds.add(studentData['id'].toString());
+
+              final updateResponse = await http.patch(
+                Uri.parse(
+                    'https://cals-server-12aff9883ee5.herokuapp.com/attendance/${sessionData['record_id']}'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({'students_ids': currentStudentIds}),
+              );
+
+              if (updateResponse.statusCode == 200) {
+                _showMessage(context, 'Attendance marked successfully!');
+                return;
+              }
+            } else {
+              _showMessage(
+                  context, 'Attendance already marked for this session');
+              return;
+            }
+          } else {
+            _showMessage(context,
+                'Session has expired. Please contact your instructor.');
+            return;
+          }
         }
+        _showMessage(context, 'Failed to mark attendance. Please try again.');
       } else {
         _showMessage(context, 'No active session found on this tag');
       }
     } catch (e) {
-      _showMessage(
-          context, 'Invalid session data. Please contact your instructor.');
+      _showMessage(context, 'Error marking attendance. Please try again.');
+      print('Error: $e');
     }
   }
 
@@ -72,10 +109,14 @@ class StudentDashboard extends StatelessWidget {
 
     if (response.statusCode == 200) {
       final jsonData = jsonDecode(response.body);
-      final student = (jsonData['read_only'] as List)
-          .firstWhere((s) => s['student_id'] == studentData['id'].toString());
+      final List<dynamic> readOnlyData = jsonData['read_only'] as List<dynamic>;
+      final targetStudentId = studentData['id'].toString();
 
-      return (student['courses'] as List)
+      final studentRecord = readOnlyData.firstWhere(
+          (s) => s['student_id'] == targetStudentId,
+          orElse: () => {'courses': []});
+
+      return (studentRecord['courses'] as List)
           .map((course) => {
                 'course': course['course'],
                 'date': DateTime.now().toString().split(' ')[0],
@@ -311,7 +352,6 @@ class StudentDashboard extends StatelessWidget {
     );
   }
 
-  // Add this helper method to determine the color based on the percentage
   Color _getPercentageColor(String percentage) {
     final value = int.parse(percentage.replaceAll('%', ''));
     if (value <= 5) return Colors.green;
@@ -343,7 +383,6 @@ class StudentDashboard extends StatelessWidget {
                   height: 90,
                 ),
                 const SizedBox(height: 20),
-                // NFC Card Design
                 GestureDetector(
                   onTap: () => _markAttendance(context),
                   child: Container(
@@ -392,7 +431,7 @@ class StudentDashboard extends StatelessWidget {
                               ),
                               const SizedBox(height: 15),
                               Text(
-                                studentData['name'], // Use data from JSON
+                                studentData['name'],
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 20,
@@ -401,8 +440,7 @@ class StudentDashboard extends StatelessWidget {
                               ),
                               const SizedBox(height: 10),
                               Text(
-                                studentData['id']
-                                    .toString(), // Use data from JSON
+                                studentData['id'].toString(),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 24,

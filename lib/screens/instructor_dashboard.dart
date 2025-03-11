@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:async';
 import '../nfc_service.dart';
 import 'login_screen.dart';
 import 'package:http/http.dart' as http;
 
 class InstructorDashboard extends StatefulWidget {
   final String instructorName;
+  final String instructorId; // Add this
 
   const InstructorDashboard({
     super.key,
     required this.instructorName,
+    required this.instructorId, // Add this
   });
 
   @override
@@ -18,15 +21,61 @@ class InstructorDashboard extends StatefulWidget {
 
 class _InstructorDashboardState extends State<InstructorDashboard> {
   String? selectedClass;
+  String? selectedCourse;
   bool _isStartingSession = false;
+  List<String> courses = []; // Change from final to regular List
+  bool _hasActiveSession = false;
+  String? _activeSessionId;
+  Map<String, dynamic>? _activeSessionData;
+  int _remainingMinutes = 50;
+  Timer? _sessionTimer;
+  final TextEditingController _studentIdController = TextEditingController();
 
   // Hardcoded classes from data.json
   final List<String> classrooms = ['G-090', 'G-091', 'G-092'];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadInstructorCourses();
+  }
+
+  @override
+  void dispose() {
+    _studentIdController.dispose();
+    _sessionTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadInstructorCourses() async {
+    try {
+      final response = await http.get(Uri.parse(
+          'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'));
+
+      if (response.statusCode == 200) {
+        final jsonData = jsonDecode(response.body);
+        final coursesData = jsonData['20242024']['courses'];
+        if (coursesData != null) {
+          setState(() {
+            // Extract course codes (keys) from the courses object
+            courses = List<String>.from(coursesData.keys);
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading courses: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
   Future<void> _startSession() async {
-    if (selectedClass == null) {
+    if (selectedClass == null || selectedCourse == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a classroom')),
+        const SnackBar(
+            content: Text('Please select both course and classroom')),
       );
       return;
     }
@@ -34,46 +83,335 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     setState(() => _isStartingSession = true);
 
     try {
-      // Create session data
-      final sessionData = {
-        'status': 'active',
-        'instructor': widget.instructorName,
-        'classroom': selectedClass,
-        'startTime': DateTime.now().toIso8601String(),
-        'duration': '50', // 50-minute session
+      final now = DateTime.now();
+      final recordId = now.millisecondsSinceEpoch.toString();
+
+      final attendanceData = {
+        'id': recordId,
+        'course_id': selectedCourse,
+        'classroom': selectedClass, // Add classroom to attendance record
+        'date': now.toString().split('.')[0],
+        'instructor_id': widget.instructorId,
+        'students_ids': [],
+        'status': 'active' // Add initial status
       };
 
-      // Convert to JSON string
-      final jsonData = jsonEncode(sessionData);
+      // Send POST request with single object
+      final attendanceResponse = await http.post(
+        Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(attendanceData), // No array wrapper
+      );
 
-      // Write to NFC tag
+      if (attendanceResponse.statusCode >= 400) {
+        throw Exception('Failed to create attendance record');
+      }
+
+      // Then write to NFC tag including the record ID
       bool isAvailable = await NFCService.isAvailable();
       if (!isAvailable) {
         throw Exception('NFC is not available on this device');
       }
 
+      final nfcData = {
+        'status': 'active',
+        'instructor': widget.instructorId,
+        'course': selectedCourse,
+        'classroom': selectedClass,
+        'startTime': now.toIso8601String(),
+        'duration': '50',
+        'record_id': recordId, // Add the record ID to the NFC data
+      };
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Hold your device near the NFC tag')),
       );
 
-      bool success = await NFCService.writeNFCTag(jsonData);
-      if (!mounted) return;
+      await NFCService.writeNFCTag(jsonEncode(nfcData));
 
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Session started successfully')),
-        );
-      } else {
-        throw Exception('Failed to write to NFC tag');
-      }
+      setState(() {
+        _hasActiveSession = true;
+        _activeSessionId = recordId;
+        _activeSessionData = {
+          'course': selectedCourse,
+          'classroom': selectedClass,
+          'startTime': now.toString(),
+        };
+      });
+      _startCountdown();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session started successfully')),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
+        SnackBar(content: Text('Error starting session: ${e.toString()}')),
       );
     } finally {
       setState(() => _isStartingSession = false);
     }
+  }
+
+  void _startCountdown() {
+    _remainingMinutes = 50;
+    _sessionTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      setState(() {
+        if (_remainingMinutes > 0) {
+          _remainingMinutes--;
+        } else {
+          _endSession();
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  Future<void> _markAbsentStudents(String attendanceId) async {
+    try {
+      // Get attendance record to get present students
+      final attendanceResponse = await http.get(
+        Uri.parse(
+            'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$attendanceId'),
+      );
+
+      if (attendanceResponse.statusCode != 200) {
+        throw Exception('Failed to fetch attendance record');
+      }
+
+      final attendanceData = jsonDecode(attendanceResponse.body);
+      final presentStudents =
+          List<String>.from(attendanceData['students_ids'] ?? []);
+      final courseId = attendanceData['course_id'];
+      final instructorId = attendanceData['instructor_id'];
+      final attendanceDate = attendanceData['date'].toString().split(' ')[0];
+      final formattedDate =
+          DateTime.parse(attendanceDate).toString().split(' ')[0];
+
+      // Get instructor view data
+      final instructorResponse = await http.get(
+        Uri.parse(
+            'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
+      );
+
+      // Get students view data
+      final studentsResponse = await http.get(
+        Uri.parse(
+            'https://cals-server-12aff9883ee5.herokuapp.com/students_view'),
+      );
+
+      if (instructorResponse.statusCode != 200 ||
+          studentsResponse.statusCode != 200) {
+        throw Exception('Failed to fetch required data');
+      }
+
+      final instructorData = jsonDecode(instructorResponse.body);
+      final studentsData = jsonDecode(studentsResponse.body);
+
+      // Get enrolled students
+      final enrolledStudents = instructorData['20242024']['courses'][courseId]
+              ['students']
+          .keys
+          .toList();
+
+      // Determine absent students
+      final absentStudents = enrolledStudents
+          .where((student) => !presentStudents.contains(student))
+          .toList();
+
+      // Update instructor view
+      for (final studentId in absentStudents) {
+        var student = instructorData['20242024']['courses'][courseId]
+            ['students'][studentId];
+
+        // Update percentage
+        var currentPercentage =
+            int.parse(student['current_percentage'].replaceAll('%', ''));
+        student['current_percentage'] = '${currentPercentage + 3}%';
+
+        // Add absence date
+        if (student['absence_dates'] == null) {
+          student['absence_dates'] = [formattedDate];
+        } else {
+          if (!student['absence_dates'].contains(formattedDate)) {
+            student['absence_dates'].add(formattedDate);
+          }
+        }
+      }
+
+      // Update students view
+      for (var student in studentsData['read_only']) {
+        if (absentStudents.contains(student['student_id'])) {
+          for (var course in student['courses']) {
+            if (course['course'] == courseId) {
+              var currentPercentage =
+                  int.parse(course['current_percentage'].replaceAll('%', ''));
+              course['current_percentage'] = '${currentPercentage + 3}%';
+
+              if (course['absence_dates'] == null) {
+                course['absence_dates'] = [formattedDate];
+              } else {
+                if (!course['absence_dates'].contains(formattedDate)) {
+                  course['absence_dates'].add(formattedDate);
+                }
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Save updated data
+      final headers = {'Content-Type': 'application/json'};
+
+      // Update instructor view
+      await http.put(
+        Uri.parse(
+            'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
+        headers: headers,
+        body: jsonEncode(instructorData),
+      );
+
+      // Update students view
+      await http.put(
+        Uri.parse(
+            'https://cals-server-12aff9883ee5.herokuapp.com/students_view'),
+        headers: headers,
+        body: jsonEncode(studentsData),
+      );
+    } catch (e) {
+      throw Exception('Failed to mark absent students: $e');
+    }
+  }
+
+  Future<void> _endSession() async {
+    try {
+      if (_activeSessionId != null) {
+        // Mark absent students before ending session
+        await _markAbsentStudents(_activeSessionId!);
+
+        // Get current attendance record to include current students_ids
+        final getResponse = await http.get(
+          Uri.parse(
+              'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
+        );
+
+        if (getResponse.statusCode == 200) {
+          final currentRecord = jsonDecode(getResponse.body);
+          final currentStudentIds =
+              List<String>.from(currentRecord['students_ids'] ?? []);
+
+          // Update session status in attendance record
+          final updateResponse = await http.patch(
+            Uri.parse(
+                'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(
+                {'status': 'ended', 'students_ids': currentStudentIds}),
+          );
+
+          if (updateResponse.statusCode == 200) {
+            _sessionTimer?.cancel();
+            setState(() {
+              _hasActiveSession = false;
+              _activeSessionId = null;
+              _activeSessionData = null;
+              _remainingMinutes = 50;
+            });
+
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content:
+                      Text('Session ended and absences marked successfully')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error ending session: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _markManualAttendance() async {
+    if (!_hasActiveSession) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Mark Student Attendance'),
+        content: TextField(
+          controller: _studentIdController,
+          decoration: const InputDecoration(
+            labelText: 'Student ID',
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_studentIdController.text.isEmpty) return;
+
+              // Get current attendance record
+              final getResponse = await http.get(
+                Uri.parse(
+                    'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
+              );
+
+              if (getResponse.statusCode == 200) {
+                final currentRecord = jsonDecode(getResponse.body);
+                final currentStudentIds =
+                    List<String>.from(currentRecord['students_ids'] ?? []);
+
+                if (!currentStudentIds.contains(_studentIdController.text)) {
+                  currentStudentIds.add(_studentIdController.text);
+
+                  final updateResponse = await http.patch(
+                    Uri.parse(
+                        'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
+                    headers: {'Content-Type': 'application/json'},
+                    body: jsonEncode({'students_ids': currentStudentIds}),
+                  );
+
+                  if (updateResponse.statusCode == 200) {
+                    _studentIdController.clear();
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content:
+                              Text('Student attendance marked successfully')),
+                    );
+                    return;
+                  }
+                } else {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content:
+                            Text('Student already marked for this session')),
+                  );
+                  return;
+                }
+              }
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to mark attendance')),
+              );
+            },
+            child: const Text('Mark Attendance'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _onWillPop() async {
@@ -94,7 +432,11 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
     if (response.statusCode == 200) {
       final jsonData = jsonDecode(response.body);
-      return jsonData['20242024']['courses'];
+      final instructorView = jsonData['20242024'];
+      if (instructorView == null) {
+        throw Exception('Instructor data not found');
+      }
+      return instructorView['courses'];
     } else {
       throw Exception('Failed to load attendance data');
     }
@@ -323,147 +665,213 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
             onPressed: _handleSignOut,
           ),
         ),
-        body: Container(
-          color: Colors.white,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset(
-                  'assets/images/ksu_shieldlogo_colour_rgb.png',
-                  width: 90,
-                  height: 90,
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Welcome, ${widget.instructorName}',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+        body: SingleChildScrollView(
+          // Add ScrollView to prevent overflow
+          child: Container(
+            color: Colors.white,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/ksu_shieldlogo_colour_rgb.png',
+                    width: 90,
+                    height: 90,
                   ),
-                ),
-                const SizedBox(height: 30),
-                Container(
-                  width: 300,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.blue),
-                    borderRadius: BorderRadius.circular(8),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Welcome, ${widget.instructorName}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Start New Session',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      DropdownButton<String>(
-                        value: selectedClass,
-                        hint: const Text('Select Classroom'),
-                        isExpanded: true,
-                        items: classrooms.map((String classroom) {
-                          return DropdownMenuItem<String>(
-                            value: classroom,
-                            child: Text(classroom),
-                          );
-                        }).toList(),
-                        onChanged: (String? value) {
-                          setState(() => selectedClass = value);
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: _isStartingSession ? null : _startSession,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 15,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.play_circle_outlined),
-                            const SizedBox(width: 8),
-                            Text(_isStartingSession
-                                ? 'Starting...'
-                                : 'Start Session'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Material(
-                    elevation: 5,
-                    borderRadius: BorderRadius.circular(15),
-                    child: Container(
+                  const SizedBox(height: 30),
+                  if (_hasActiveSession)
+                    Container(
+                      margin: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.blue.withOpacity(0.3),
-                            spreadRadius: 1,
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blue),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Active Session',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text('Course: ${_activeSessionData?['course']}'),
+                          Text(
+                              'Classroom: ${_activeSessionData?['classroom']}'),
+                          Text('Time Remaining: $_remainingMinutes minutes'),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              ElevatedButton(
+                                onPressed: _markManualAttendance,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                ),
+                                child: const Text('Mark Attendance'),
+                              ),
+                              ElevatedButton(
+                                onPressed: _endSession,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                child: const Text('End Session'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      child: InkWell(
-                        onTap: () => _showAttendanceHistory(context),
-                        borderRadius: BorderRadius.circular(15),
-                        splashColor: Colors.white.withOpacity(0.2),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 25,
-                            vertical: 15,
+                    )
+                  else
+                    Container(
+                      width: 300,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.blue),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Start New Session',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.history_edu,
-                                color: Colors.white,
-                                size: 24,
+                          const SizedBox(height: 20),
+                          DropdownButton<String>(
+                            value: selectedCourse,
+                            hint: const Text('Select Course'),
+                            isExpanded: true,
+                            items: courses.map((String course) {
+                              return DropdownMenuItem<String>(
+                                value: course,
+                                child: Text(course),
+                              );
+                            }).toList(),
+                            onChanged: (String? value) {
+                              setState(() => selectedCourse = value);
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          DropdownButton<String>(
+                            value: selectedClass,
+                            hint: const Text('Select Classroom'),
+                            isExpanded: true,
+                            items: classrooms.map((String classroom) {
+                              return DropdownMenuItem<String>(
+                                value: classroom,
+                                child: Text(classroom),
+                              );
+                            }).toList(),
+                            onChanged: (String? value) {
+                              setState(() => selectedClass = value);
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton(
+                            onPressed:
+                                _isStartingSession ? null : _startSession,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 15,
                               ),
-                              SizedBox(width: 15),
-                              Text(
-                                'View Attendance History',
-                                style: TextStyle(
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.play_circle_outlined),
+                                const SizedBox(width: 8),
+                                Text(_isStartingSession
+                                    ? 'Starting...'
+                                    : 'Start Session'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Material(
+                      elevation: 5,
+                      borderRadius: BorderRadius.circular(15),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.blue.withOpacity(0.3),
+                              spreadRadius: 1,
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: InkWell(
+                          onTap: () => _showAttendanceHistory(context),
+                          borderRadius: BorderRadius.circular(15),
+                          splashColor: Colors.white.withOpacity(0.2),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 25,
+                              vertical: 15,
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.history_edu,
                                   color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
+                                  size: 24,
                                 ),
-                              ),
-                              SizedBox(width: 15),
-                              Icon(
-                                Icons.arrow_forward_ios,
-                                color: Colors.white70,
-                                size: 18,
-                              ),
-                            ],
+                                SizedBox(width: 15),
+                                Text(
+                                  'View Attendance History',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                SizedBox(width: 15),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: Colors.white70,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

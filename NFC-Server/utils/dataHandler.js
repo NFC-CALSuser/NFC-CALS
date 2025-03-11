@@ -96,6 +96,24 @@ class DataHandler {
     }
     return false;
   }
+
+  static async executeMarkAbsenceScript(sessionId) {
+    const { exec } = require('child_process');
+    const path = require('path');
+    const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'mark_end_session.ps1');
+
+    return new Promise((resolve, reject) => {
+      exec(`powershell -File "${scriptPath}" ${sessionId}`, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Error executing script: ${error}`);
+          reject(error);
+          return;
+        }
+        console.log(`Script output: ${stdout}`);
+        resolve(stdout);
+      });
+    });
+  }
 }
 
 module.exports = DataHandler;
