@@ -354,8 +354,8 @@ class StudentDashboard extends StatelessWidget {
 
   Color _getPercentageColor(String percentage) {
     final value = int.parse(percentage.replaceAll('%', ''));
-    if (value <= 5) return Colors.green;
-    if (value <= 10) return Colors.orange;
+    if (value <= 15) return Colors.green;
+    if (value < 25) return Colors.orange;
     return Colors.red;
   }
 

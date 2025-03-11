@@ -298,20 +298,14 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
         );
 
         if (getResponse.statusCode == 200) {
-          final currentRecord = jsonDecode(getResponse.body);
-          final currentStudentIds =
-              List<String>.from(currentRecord['students_ids'] ?? []);
-
-          // Update session status in attendance record
-          final updateResponse = await http.patch(
+          // Delete the attendance record
+          final deleteResponse = await http.delete(
             Uri.parse(
                 'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(
-                {'status': 'ended', 'students_ids': currentStudentIds}),
           );
 
-          if (updateResponse.statusCode == 200) {
+          if (deleteResponse.statusCode == 200) {
             _sessionTimer?.cancel();
             setState(() {
               _hasActiveSession = false;
@@ -326,6 +320,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
                   content:
                       Text('Session ended and absences marked successfully')),
             );
+          } else {
+            throw Exception('Failed to delete attendance record');
           }
         }
       }
@@ -648,8 +644,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
   Color _getPercentageColor(String percentage) {
     final value = int.parse(percentage.replaceAll('%', ''));
-    if (value <= 5) return Colors.green;
-    if (value <= 10) return Colors.orange;
+    if (value <= 15) return Colors.green;
+    if (value < 25) return Colors.orange;
     return Colors.red;
   }
 
