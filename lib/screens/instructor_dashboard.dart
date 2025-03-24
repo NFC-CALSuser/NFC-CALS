@@ -4,6 +4,7 @@ import 'dart:async';
 import '../nfc_service.dart';
 import 'login_screen.dart';
 import 'package:http/http.dart' as http;
+import '../widgets/nfc_instruction_overlay.dart';
 
 class InstructorDashboard extends StatefulWidget {
   final String instructorName;
@@ -30,6 +31,11 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
   int _remainingMinutes = 50;
   Timer? _sessionTimer;
   final TextEditingController _studentIdController = TextEditingController();
+  bool _isTagVerified = false;
+  bool _isWritingToTag = false;
+  int _writeAttempts = 0;
+  final int _maxWriteAttempts = 3;
+  OverlayEntry? _overlayEntry;
 
   // Hardcoded classes from data.json
   final List<String> classrooms = ['G-090', 'G-091', 'G-092'];
@@ -44,6 +50,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
   void dispose() {
     _studentIdController.dispose();
     _sessionTimer?.cancel();
+    _hideNFCMessage();
     super.dispose();
   }
 
@@ -83,35 +90,15 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     setState(() => _isStartingSession = true);
 
     try {
-      final now = DateTime.now();
-      final recordId = now.millisecondsSinceEpoch.toString();
-
-      final attendanceData = {
-        'id': recordId,
-        'course_id': selectedCourse,
-        'classroom': selectedClass, // Add classroom to attendance record
-        'date': now.toString().split('.')[0],
-        'instructor_id': widget.instructorId,
-        'students_ids': [],
-        'status': 'active' // Add initial status
-      };
-
-      // Send POST request with single object
-      final attendanceResponse = await http.post(
-        Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(attendanceData), // No array wrapper
-      );
-
-      if (attendanceResponse.statusCode >= 400) {
-        throw Exception('Failed to create attendance record');
-      }
-
-      // Then write to NFC tag including the record ID
       bool isAvailable = await NFCService.isAvailable();
+      print('NFC Available: $isAvailable'); // Debug print
+
       if (!isAvailable) {
         throw Exception('NFC is not available on this device');
       }
+
+      final now = DateTime.now();
+      final recordId = now.millisecondsSinceEpoch.toString();
 
       final nfcData = {
         'status': 'active',
@@ -120,35 +107,66 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
         'classroom': selectedClass,
         'startTime': now.toIso8601String(),
         'duration': '50',
-        'record_id': recordId, // Add the record ID to the NFC data
+        'record_id': recordId,
       };
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hold your device near the NFC tag')),
-      );
+      print('Writing NFC Data: ${jsonEncode(nfcData)}'); // Debug print
 
-      await NFCService.writeNFCTag(jsonEncode(nfcData));
+      // Replace SnackBar with new overlay
+      _showNFCMessage('Hold your device near the NFC tag');
 
-      setState(() {
-        _hasActiveSession = true;
-        _activeSessionId = recordId;
-        _activeSessionData = {
-          'course': selectedCourse,
-          'classroom': selectedClass,
-          'startTime': now.toString(),
-        };
-      });
-      _startCountdown();
+      try {
+        // Write data
+        await NFCService.writeNFCTag(jsonEncode(nfcData));
+        print('Write operation completed'); // Debug print
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Session started successfully')),
-      );
+        // Wait briefly before reading
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Read for verification
+        String readResult = await NFCService.readNFCTag();
+        print('Read Result: $readResult'); // Debug print
+
+        if (readResult.isNotEmpty) {
+          print('Verification successful'); // Debug print
+
+          // Create attendance record after successful NFC write
+          final attendanceResponse =
+              await _createAttendanceRecord(recordId, now);
+          print(
+              'Attendance Record Created: ${attendanceResponse.statusCode}'); // Debug print
+
+          setState(() {
+            _hasActiveSession = true;
+            _activeSessionId = recordId;
+            _activeSessionData = {
+              'course': selectedCourse,
+              'classroom': selectedClass,
+              'startTime': now.toString(),
+            };
+          });
+
+          _startCountdown();
+          _showNFCMessage('Session started successfully', isSuccess: true);
+          // Wait briefly to show success message before hiding
+          await Future.delayed(const Duration(seconds: 2));
+          _hideNFCMessage();
+        } else {
+          print('Tag read was empty'); // Debug print
+          throw Exception('Could not read tag data');
+        }
+      } catch (nfcError) {
+        print('NFC Error: $nfcError'); // Debug print
+        _showNFCMessage('NFC Operation failed: ${nfcError.toString()}');
+        await Future.delayed(const Duration(seconds: 2));
+        _hideNFCMessage();
+      }
     } catch (e) {
+      print('General Error: $e'); // Debug print
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error starting session: ${e.toString()}')),
-      );
+      _showNFCMessage('Error: ${e.toString()}');
+      await Future.delayed(const Duration(seconds: 2));
+      _hideNFCMessage();
     } finally {
       setState(() => _isStartingSession = false);
     }
@@ -315,11 +333,12 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
             });
 
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content:
-                      Text('Session ended and absences marked successfully')),
+            _showNFCMessage(
+              'Session ended and absences marked successfully',
+              isSuccess: true,
             );
+            await Future.delayed(const Duration(seconds: 2));
+            _hideNFCMessage();
           } else {
             throw Exception('Failed to delete attendance record');
           }
@@ -327,9 +346,12 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error ending session: ${e.toString()}')),
+      _showNFCMessage(
+        'Error ending session: ${e.toString()}',
+        isSuccess: false,
       );
+      await Future.delayed(const Duration(seconds: 2));
+      _hideNFCMessage();
     }
   }
 
@@ -381,11 +403,12 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
                   if (updateResponse.statusCode == 200) {
                     _studentIdController.clear();
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content:
-                              Text('Student attendance marked successfully')),
+                    _showNFCMessage(
+                      'Student attendance marked successfully',
+                      isSuccess: true,
                     );
+                    await Future.delayed(const Duration(seconds: 2));
+                    _hideNFCMessage();
                     return;
                   }
                 } else {
@@ -588,8 +611,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
                                                                   Text(date),
                                                                 ],
                                                               ),
-                                                            ))
-                                                        .toList(),
+                                                            )),
                                                   ],
                                                 ),
                                               ),
@@ -695,13 +717,24 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
                       ),
                       child: Column(
                         children: [
-                          const Text(
-                            'Active Session',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Active Session',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              if (_isTagVerified)
+                                const Icon(Icons.check_circle,
+                                    color: Colors.green)
+                              else
+                                const Icon(Icons.error, color: Colors.red),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           Text('Course: ${_activeSessionData?['course']}'),
@@ -728,6 +761,16 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
                               ),
                             ],
                           ),
+                          if (_isWritingToTag)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const CircularProgressIndicator(),
+                                const SizedBox(width: 10),
+                                Text(
+                                    'Writing to NFC tag (Attempt $_writeAttempts of $_maxWriteAttempts)'),
+                              ],
+                            ),
                         ],
                       ),
                     )
@@ -874,4 +917,122 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
       ),
     );
   }
+
+  void _showWriteAttemptDialog() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(width: 16),
+            Text(
+                'Writing to NFC tag (Attempt $_writeAttempts of $_maxWriteAttempts).\nHold your device near the tag.'),
+          ],
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<VerificationResult> _verifyNFCTag(
+      Map<String, dynamic> expectedData) async {
+    try {
+      bool available = await NFCService.isAvailable();
+      if (!available) {
+        return VerificationResult(false, 'NFC is not available on this device');
+      }
+
+      String result = await NFCService.readNFCTag();
+      if (result.isEmpty) {
+        return VerificationResult(false, 'Could not read tag data');
+      }
+
+      try {
+        Map<String, dynamic> readJson = jsonDecode(result);
+        bool isValid = readJson['record_id'] == expectedData['record_id'] &&
+            readJson['course'] == expectedData['course'] &&
+            readJson['classroom'] == expectedData['classroom'];
+
+        return VerificationResult(
+            isValid, isValid ? null : 'Tag data verification failed');
+      } on FormatException {
+        return VerificationResult(false, 'Invalid data format on tag');
+      }
+    } catch (e) {
+      return VerificationResult(false, 'Error reading tag: ${e.toString()}');
+    }
+  }
+
+  Future<http.Response> _createAttendanceRecord(
+      String recordId, DateTime now) async {
+    final attendanceData = {
+      'id': recordId,
+      'course_id': selectedCourse,
+      'classroom': selectedClass,
+      'date': now.toString().split('.')[0],
+      'instructor_id': widget.instructorId,
+      'students_ids': [],
+      'status': 'active'
+    };
+
+    return await http.post(
+      Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(attendanceData),
+    );
+  }
+
+  void _showSuccessMessage() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Session started successfully'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  void _showErrorMessage(String error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error: $error'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  // Add this method to show NFC messages
+  void _showNFCMessage(String message, {bool isSuccess = false}) {
+    // Remove existing overlay if any
+    _overlayEntry?.remove();
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).size.height * 0.15,
+        left: 0,
+        right: 0,
+        child: NFCInstructionOverlay(
+          message: message,
+          icon: isSuccess ? Icons.check_circle_outline : Icons.nfc,
+          color: isSuccess ? Colors.green.shade600 : Colors.blue.shade600,
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _hideNFCMessage() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+}
+
+class VerificationResult {
+  final bool verified;
+  final String? error;
+
+  VerificationResult(this.verified, this.error);
 }

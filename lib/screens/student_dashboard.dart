@@ -305,7 +305,7 @@ class StudentDashboard extends StatelessWidget {
                                                       ],
                                                     ),
                                                   ))
-                                              .toList(),
+                                              ,
                                       ],
                                     ),
                                   ),
