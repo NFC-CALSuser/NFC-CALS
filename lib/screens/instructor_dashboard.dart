@@ -91,7 +91,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
     try {
       bool isAvailable = await NFCService.isAvailable();
-      print('NFC Available: $isAvailable'); // Debug print
+      print('NFC Available: $isAvailable');
 
       if (!isAvailable) {
         throw Exception('NFC is not available on this device');
@@ -100,70 +100,59 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
       final now = DateTime.now();
       final recordId = now.millisecondsSinceEpoch.toString();
 
-      final nfcData = {
-        'status': 'active',
-        'instructor': widget.instructorId,
-        'course': selectedCourse,
-        'classroom': selectedClass,
-        'startTime': now.toIso8601String(),
-        'duration': '50',
-        'record_id': recordId,
-      };
-
-      print('Writing NFC Data: ${jsonEncode(nfcData)}'); // Debug print
-
-      // Replace SnackBar with new overlay
-      _showNFCMessage('Hold your device near the NFC tag');
+      print('Starting session with record ID: $recordId'); // Debug log
+      print('Selected course: $selectedCourse'); // Debug log
+      print('Selected classroom: $selectedClass'); // Debug log
 
       try {
-        // Write data
-        await NFCService.writeNFCTag(jsonEncode(nfcData));
-        print('Write operation completed'); // Debug print
+        // Create attendance record first
+        final attendanceResponse = await _createAttendanceRecord(recordId, now);
+        print('Attendance record created successfully'); // Debug log
 
-        // Wait briefly before reading
-        await Future.delayed(const Duration(milliseconds: 500));
+        final nfcData = {
+          'status': 'active',
+          'instructor': widget.instructorId,
+          'course': selectedCourse,
+          'classroom': selectedClass,
+          'startTime': now.toIso8601String(),
+          'duration': '50',
+          'record_id': recordId,
+        };
 
-        // Read for verification
-        String readResult = await NFCService.readNFCTag();
-        print('Read Result: $readResult'); // Debug print
+        print('Preparing to write NFC Data: ${jsonEncode(nfcData)}');
+        _showNFCMessage('Hold your device near the NFC tag');
 
-        if (readResult.isNotEmpty) {
-          print('Verification successful'); // Debug print
-
-          // Create attendance record after successful NFC write
-          final attendanceResponse =
-              await _createAttendanceRecord(recordId, now);
-          print(
-              'Attendance Record Created: ${attendanceResponse.statusCode}'); // Debug print
-
-          setState(() {
-            _hasActiveSession = true;
-            _activeSessionId = recordId;
-            _activeSessionData = {
-              'course': selectedCourse,
-              'classroom': selectedClass,
-              'startTime': now.toString(),
-            };
-          });
-
-          _startCountdown();
-          _showNFCMessage('Session started successfully', isSuccess: true);
-          // Wait briefly to show success message before hiding
-          await Future.delayed(const Duration(seconds: 2));
-          _hideNFCMessage();
-        } else {
-          print('Tag read was empty'); // Debug print
-          throw Exception('Could not read tag data');
+        // Write to NFC tag
+        bool writeSuccess = await NFCService.writeNFCTag(jsonEncode(nfcData));
+        if (!writeSuccess) {
+          // Clean up attendance record if NFC write fails
+          await http.delete(
+            Uri.parse(
+                'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+          );
+          throw Exception('Failed to write to NFC tag');
         }
-      } catch (nfcError) {
-        print('NFC Error: $nfcError'); // Debug print
-        _showNFCMessage('NFC Operation failed: ${nfcError.toString()}');
+
+        setState(() {
+          _hasActiveSession = true;
+          _activeSessionId = recordId;
+          _activeSessionData = {
+            'course': selectedCourse,
+            'classroom': selectedClass,
+            'startTime': now.toString(),
+          };
+        });
+
+        _startCountdown();
+        _showNFCMessage('Session started successfully', isSuccess: true);
         await Future.delayed(const Duration(seconds: 2));
         _hideNFCMessage();
+      } catch (e) {
+        print('Error in attendance record creation or NFC write: $e');
+        throw Exception(e.toString());
       }
     } catch (e) {
-      print('General Error: $e'); // Debug print
-      if (!mounted) return;
+      print('Error in session start: $e');
       _showNFCMessage('Error: ${e.toString()}');
       await Future.delayed(const Duration(seconds: 2));
       _hideNFCMessage();
@@ -965,22 +954,37 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
   }
 
   Future<http.Response> _createAttendanceRecord(
-      String recordId, DateTime now) async {
-    final attendanceData = {
-      'id': recordId,
-      'course_id': selectedCourse,
-      'classroom': selectedClass,
-      'date': now.toString().split('.')[0],
-      'instructor_id': widget.instructorId,
-      'students_ids': [],
-      'status': 'active'
-    };
+      String recordId, DateTime startTime) async {
+    print('Creating attendance record...');
 
-    return await http.post(
-      Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(attendanceData),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id': recordId, // Use recordId directly as id
+          'course_id': selectedCourse, // Changed from 'course' to 'course_id'
+          'classroom': selectedClass,
+          'date': startTime.toString(), // Format date as string
+          'instructor_id': widget.instructorId,
+          'students_ids': [], // Initialize empty array
+          'status': 'active'
+        }),
+      );
+
+      print('Attendance record creation response: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(
+            'Server returned ${response.statusCode}: ${response.body}');
+      }
+
+      return response;
+    } catch (e) {
+      print('Error creating attendance record: $e');
+      throw Exception('Failed to create attendance record: $e');
+    }
   }
 
   void _showSuccessMessage() {
