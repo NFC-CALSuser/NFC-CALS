@@ -1,6 +1,19 @@
 {
   "dependencies": {
+    "crypto": "^1.0.1",
+    "express-validator": "^7.0.1",
+    "fs": "^0.0.1-security",
     "mongo-sanitize": "^1.0.1",
-    "express-validator": "^7.0.1"
-  }
+    "node-fetch": "^2.7.0"
+  },
+  "name": "nfc-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
 }

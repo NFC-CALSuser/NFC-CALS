@@ -18,6 +18,7 @@ dependencies:
   uuid: ^3.0.7
   flutter_secure_storage: ^8.0.0
   device_info_plus: ^9.0.0
+  encrypt: ^5.0.1
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import '../services/config_service.dart';
+import '../services/encryption_service.dart';
 
 class AuthService {
   static String hashPassword(String password) {
@@ -12,43 +13,49 @@ class AuthService {
 
   static Future<Map<String, dynamic>?> login(String id, String password) async {
     try {
-      final studentsResponse =
-          await http.get(Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/students.json'));
+      final studentsResponse = await http.get(
+          Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/students_encrypted.json'));
       final instructorsResponse = await http
-          .get(Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/instructors.json'));
+          .get(Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/instructors_encrypted.json'));
 
-      if (studentsResponse.statusCode == 200 &&
-          instructorsResponse.statusCode == 200) {
-        final studentsData =
-            json.decode(studentsResponse.body)['students'] as List;
-        final instructorsData =
-            json.decode(instructorsResponse.body)['instructors'] as List;
+      if (studentsResponse.statusCode == 200 && instructorsResponse.statusCode == 200) {
+        // Decrypt the responses
+        final studentsEncrypted = jsonDecode(studentsResponse.body);
+        final instructorsEncrypted = jsonDecode(instructorsResponse.body);
+
+        final studentsData = EncryptionService.decryptData(
+          studentsEncrypted['data'],
+          studentsEncrypted['iv']
+        );
+
+        final instructorsData = EncryptionService.decryptData(
+          instructorsEncrypted['data'],
+          instructorsEncrypted['iv']
+        );
 
         final hashedPassword = hashPassword(password);
-        print('Input ID: $id'); // Debug print
-        print('Hashed password: $hashedPassword'); // Debug print
 
-        // Check students - match by ID instead of email
-        final student = studentsData.firstWhere(
-            (s) => s['id'].toString() == id && s['password'] == hashedPassword,
-            orElse: () => null);
+        // Check students
+        final student = studentsData['students'].firstWhere(
+          (s) => s['id'].toString() == id && s['password'] == hashedPassword,
+          orElse: () => null,
+        );
         if (student != null) {
           return {'type': 'student', 'data': student};
         }
 
-        // Check instructors - match by ID instead of email
-        final instructor = instructorsData.firstWhere(
-            (i) => i['id'].toString() == id && i['password'] == hashedPassword,
-            orElse: () => null);
+        // Check instructors
+        final instructor = instructorsData['instructors'].firstWhere(
+          (i) => i['id'].toString() == id && i['password'] == hashedPassword,
+          orElse: () => null,
+        );
         if (instructor != null) {
           return {'type': 'instructor', 'data': instructor};
         }
       }
       return null;
     } catch (e) {
-      if (e.toString().contains('Too many login attempts')) {
-        throw ConnectionException('Rate limit exceeded. Please wait 15 minutes.');
-      }
+      print('Login error: $e');
       throw ConnectionException('Failed to connect to server');
     }
   }

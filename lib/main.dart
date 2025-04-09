@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'services/config_service.dart';
+import 'services/encryption_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ConfigService.initialize();
+  await EncryptionService.initialize();
   runApp(const MyApp());
 }
 
