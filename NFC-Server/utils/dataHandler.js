@@ -65,7 +65,12 @@ class DataHandler {
 
   static findStudentById(id) {
     const students = this.getStudents();
-    return students.find(s => s.id === parseInt(id));
+    // Use type checking and sanitization
+    const sanitizedId = parseInt(id, 10);
+    if (isNaN(sanitizedId)) {
+      throw new Error('Invalid student ID format');
+    }
+    return students.find(s => s.id === sanitizedId);
   }
 
   static findStudentByNfcId(nfcId) {
@@ -84,17 +89,33 @@ class DataHandler {
   }
 
   static updateStudentAttendance(studentId, attendanceData) {
-    const students = this.getStudents();
-    const studentIndex = students.findIndex(s => s.id === parseInt(studentId));
-    
-    if (studentIndex !== -1) {
-      if (!students[studentIndex].attendance) {
-        students[studentIndex].attendance = [];
-      }
-      students[studentIndex].attendance.push(attendanceData);
-      return this.updateStudents(students);
+    // Validate and sanitize input
+    if (!this.isValidAttendanceData(attendanceData)) {
+      throw new Error('Invalid attendance data format');
     }
-    return false;
+
+    const students = this.getStudents();
+    const sanitizedId = parseInt(studentId, 10);
+    const studentIndex = students.findIndex(s => s.id === sanitizedId);
+    
+    if (studentIndex === -1) return false;
+
+    if (!students[studentIndex].attendance) {
+      students[studentIndex].attendance = [];
+    }
+    students[studentIndex].attendance.push(attendanceData);
+    return this.updateStudents(students);
+  }
+
+  static isValidAttendanceData(data) {
+    return (
+      data &&
+      typeof data === 'object' &&
+      typeof data.record_id === 'string' &&
+      typeof data.course_id === 'string' &&
+      typeof data.date === 'string' &&
+      Array.isArray(data.students_ids)
+    );
   }
 
   static async executeMarkAbsenceScript(sessionId) {

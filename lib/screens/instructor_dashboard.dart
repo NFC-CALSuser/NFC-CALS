@@ -90,48 +90,29 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     setState(() => _isStartingSession = true);
 
     try {
-      bool isAvailable = await NFCService.isAvailable();
-      print('NFC Available: $isAvailable');
-
-      if (!isAvailable) {
-        throw Exception('NFC is not available on this device');
-      }
-
       final now = DateTime.now();
       final recordId = now.millisecondsSinceEpoch.toString();
 
-      print('Starting session with record ID: $recordId'); // Debug log
-      print('Selected course: $selectedCourse'); // Debug log
-      print('Selected classroom: $selectedClass'); // Debug log
+      final nfcData = {
+        'status': 'active',
+        'instructor': widget.instructorId,
+        'course': selectedCourse,
+        'classroom': selectedClass,
+        'startTime': now.toIso8601String(),
+        'duration': '50',
+        'record_id': recordId,
+      };
+
+      // Write to NFC tag with session protection
+      bool writeSuccess = await NFCService.writeNFCTag(jsonEncode(nfcData));
+      if (!writeSuccess) {
+        throw Exception('Failed to write to NFC tag');
+      }
 
       try {
         // Create attendance record first
         final attendanceResponse = await _createAttendanceRecord(recordId, now);
         print('Attendance record created successfully'); // Debug log
-
-        final nfcData = {
-          'status': 'active',
-          'instructor': widget.instructorId,
-          'course': selectedCourse,
-          'classroom': selectedClass,
-          'startTime': now.toIso8601String(),
-          'duration': '50',
-          'record_id': recordId,
-        };
-
-        print('Preparing to write NFC Data: ${jsonEncode(nfcData)}');
-        _showNFCMessage('Hold your device near the NFC tag');
-
-        // Write to NFC tag
-        bool writeSuccess = await NFCService.writeNFCTag(jsonEncode(nfcData));
-        if (!writeSuccess) {
-          // Clean up attendance record if NFC write fails
-          await http.delete(
-            Uri.parse(
-                'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
-          );
-          throw Exception('Failed to write to NFC tag');
-        }
 
         setState(() {
           _hasActiveSession = true;
@@ -152,10 +133,12 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
         throw Exception(e.toString());
       }
     } catch (e) {
-      print('Error in session start: $e');
-      _showNFCMessage('Error: ${e.toString()}');
-      await Future.delayed(const Duration(seconds: 2));
-      _hideNFCMessage();
+      String errorMessage = e.toString();
+      if (errorMessage.contains('Too many requests')) {
+        _showNFCMessage('Rate limit exceeded. Please wait a minute.');
+      } else {
+        _showNFCMessage('Error: $errorMessage');
+      }
     } finally {
       setState(() => _isStartingSession = false);
     }

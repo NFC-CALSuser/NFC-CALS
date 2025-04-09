@@ -1,6 +1,36 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const DataHandler = require('../utils/dataHandler');
+const sanitizeInput = require('../middleware/sanitize');
+
+// Create different rate limiters for different endpoints
+const attendanceLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // 30 requests per minute for attendance operations
+  message: 'Too many attendance requests, please try again after a minute'
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 login attempts per 15 minutes
+  message: 'Too many login attempts, please try again after 15 minutes'
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute for general operations
+  message: 'Too many requests, please try again after a minute'
+});
+
+// Apply rate limiting to specific routes
+router.use('/attendance', attendanceLimiter);
+router.use('/student/login', authLimiter);
+router.use('/instructor/login', authLimiter);
+router.use('/', generalLimiter);
+
+// Apply sanitization to all routes
+router.use(sanitizeInput);
 
 // Student routes
 router.get('/students', (req, res) => {
@@ -8,7 +38,7 @@ router.get('/students', (req, res) => {
   res.json(students);
 });
 
-router.post('/student/login', (req, res) => {
+router.post('/student/login', authLimiter, (req, res) => {
   const { id, password } = req.body;
   const students = DataHandler.getStudents();
   const student = students.find(s => s.id === parseInt(id) && s.password === password);
@@ -182,13 +212,52 @@ router.patch('/attendance/:id', async (req, res) => {
   }
 });
 
+// Update attendance route with validation
+router.post('/attendance', [
+  sanitizeInput,
+  validateAttendanceData,
+], async (req, res) => {
+  try {
+    const { id, course_id, classroom, date, instructor_id } = req.body;
+    
+    // Validate input types
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ error: 'Invalid ID format' });
+    }
+    
+    // Validate course_id format
+    if (!(/^[A-Z]{3,4}\d{3}$/.test(course_id))) {
+      return res.status(400).json({ error: 'Invalid course ID format' });
+    }
+
+    // Validate classroom format
+    if (!(/^[A-Z]-\d{3}$/.test(classroom))) {
+      return res.status(400).json({ error: 'Invalid classroom format' });
+    }
+
+    // Process validated data
+    const result = await DataHandler.createAttendanceRecord({
+      id,
+      course_id,
+      classroom,
+      date,
+      instructor_id,
+      students_ids: []
+    });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Instructor routes
 router.get('/instructors', (req, res) => {
   const instructors = DataHandler.getInstructors();
   res.json(instructors);
 });
 
-router.post('/instructor/login', (req, res) => {
+router.post('/instructor/login', authLimiter, (req, res) => {
   const { id, password } = req.body;
   const instructors = DataHandler.getInstructors();
   const instructor = instructors.find(i => i.id === id && i.password === password);

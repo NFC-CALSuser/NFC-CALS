@@ -1,14 +1,11 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import '../services/config_service.dart';
 
 class AuthService {
-  static const String baseUrl = 'https://nfc-calsuser.github.io/NFC-CALS';
-  static const String SECRET_KEY =
-      '4a9c5c2e89f340c399a6a3f3928021f48920a206e09c4336b580bacbb34e3034';
-
   static String hashPassword(String password) {
-    final hmac = Hmac(sha256, utf8.encode(SECRET_KEY));
+    final hmac = Hmac(sha256, utf8.encode(ConfigService.hmacKey));
     final digest = hmac.convert(utf8.encode(password));
     return digest.toString();
   }
@@ -16,9 +13,9 @@ class AuthService {
   static Future<Map<String, dynamic>?> login(String id, String password) async {
     try {
       final studentsResponse =
-          await http.get(Uri.parse('$baseUrl/NFC-Server/data/students.json'));
+          await http.get(Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/students.json'));
       final instructorsResponse = await http
-          .get(Uri.parse('$baseUrl/NFC-Server/data/instructors.json'));
+          .get(Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/instructors.json'));
 
       if (studentsResponse.statusCode == 200 &&
           instructorsResponse.statusCode == 200) {
@@ -49,14 +46,16 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('Login error: $e'); // Debug print
+      if (e.toString().contains('Too many login attempts')) {
+        throw ConnectionException('Rate limit exceeded. Please wait 15 minutes.');
+      }
       throw ConnectionException('Failed to connect to server');
     }
   }
 
   // Utility method to fetch courses
   static Future<List<dynamic>> getCourses() async {
-    final response = await http.get(Uri.parse('$baseUrl/courses.json'));
+    final response = await http.get(Uri.parse('${ConfigService.baseUrl}/courses.json'));
     if (response.statusCode == 200) {
       return json.decode(response.body)['courses'];
     }
@@ -65,11 +64,30 @@ class AuthService {
 
   // Utility method to fetch classes
   static Future<List<dynamic>> getClasses() async {
-    final response = await http.get(Uri.parse('$baseUrl/classes.json'));
+    final response = await http.get(Uri.parse('${ConfigService.baseUrl}/classes.json'));
     if (response.statusCode == 200) {
       return json.decode(response.body)['classes'];
     }
     throw Exception('Failed to load classes');
+  }
+
+  static Future<String> getSecureKey({
+    required String sessionToken,
+    required String deviceId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ConfigService.baseUrl}/auth/get-key'),
+      headers: {
+        'Authorization': 'Bearer $sessionToken',
+        'X-Device-ID': deviceId,
+        'Content-Type': 'application/json',
+      },
+    );
+    
+    if (response.statusCode == 200) {
+      return response.body;
+    }
+    throw Exception('Failed to get secure key');
   }
 }
 

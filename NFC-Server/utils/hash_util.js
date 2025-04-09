@@ -1,26 +1,39 @@
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
+const fetch = require('node-fetch');
 
-// This should be stored in environment variables in production
-const SECRET_KEY = '4a9c5c2e89f340c399a6a3f3928021f48920a206e09c4336b580bacbb34e3034';
+let SECRET_KEY = null;
+
+async function initializeSecretKey() {
+  try {
+    const response = await fetch('https://nfc-calsuser.github.io/NFC-CALS/NFC-Server/data/APIs.json');
+    const data = await response.json();
+    SECRET_KEY = data.hmac_key;
+  } catch (error) {
+    console.error('Failed to initialize secret key:', error);
+    throw error;
+  }
+}
 
 function createHMAC(password) {
-    return crypto.createHmac('sha256', SECRET_KEY)
-        .update(password)
-        .digest('hex');
+  if (!SECRET_KEY) throw new Error('Secret key not initialized');
+  return crypto.createHmac('sha256', SECRET_KEY)
+    .update(password)
+    .digest('hex');
 }
 
 function verifyPassword(inputPassword, storedPassword) {
-    const hmac = createHMAC(inputPassword);
-    return hmac === storedPassword;
+  const hmac = createHMAC(inputPassword);
+  return hmac === storedPassword;
 }
 
 function hashPassword(password) {
-    return createHMAC(password);
+  return createHMAC(password);
 }
 
 // Hash all passwords in files
+const fs = require('fs');
+const path = require('path');
+
 function hashAllPasswords() {
     // Hash students passwords
     const studentsPath = path.join(__dirname, '../data/students.json');
@@ -41,4 +54,4 @@ function hashAllPasswords() {
     console.log('All passwords have been hashed successfully!');
 }
 
-module.exports = { createHMAC, verifyPassword, hashPassword, hashAllPasswords };
+module.exports = { createHMAC, verifyPassword, hashPassword, hashAllPasswords, initializeSecretKey };

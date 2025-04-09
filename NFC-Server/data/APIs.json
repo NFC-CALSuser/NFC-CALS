@@ -1,4 +1,5 @@
 {
     "nfc_password": "74e6ea3c",
-    "hmac_key": "4a9c5c2e89f340c399a6a3f3928021f48920a206e09c4336b580bacbb34e3034"
+    "hmac_key": "4a9c5c2e89f340c399a6a3f3928021f48920a206e09c4336b580bacbb34e3034",
+    "encryption_key": "a3f16b9c7d4e81a2c5b3e7f1946d2a88"
 }
