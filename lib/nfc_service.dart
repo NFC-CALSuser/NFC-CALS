@@ -11,7 +11,6 @@ class NFCService {
 
   static Future<bool> writeNFCTag(String data) async {
     Completer<bool> completer = Completer<bool>();
-    bool success = false;
 
     try {
       final nfcData = jsonDecode(data) as Map<String, dynamic>;
@@ -21,31 +20,33 @@ class NFCService {
           try {
             print('Tag discovered, attempting to write...');
 
-            // Get tag UID
+            // Get the tag UID first
             final uid = await NFCSecurityService.getTagUID(tag);
             if (uid == null) {
               throw Exception('Could not read tag UID');
             }
 
-            // Add security data
+            // Add UID to the data being written
+            nfcData['uid'] = uid;
+            
+            // Add timestamp for security
             final timestamp = DateTime.now().toIso8601String();
+            nfcData['timestamp'] = timestamp;
+            
+            // Generate signature
             final signature = NFCSecurityService.generateTagSignature(
-                uid, jsonEncode(nfcData), timestamp);
+              uid,
+              jsonEncode(nfcData),
+              timestamp
+            );
+            nfcData['signature'] = signature;
 
-            // Add security information to NFC data with explicit typing
-            final Map<String, dynamic> secureData = {
-              ...nfcData,
-              'uid': uid,
-              'timestamp': timestamp,
-              'signature': signature,
-            };
-
+            // Write to tag
             var ndef = Ndef.from(tag);
             if (ndef == null || !ndef.isWritable) {
               throw Exception('Tag is not NDEF formatted or not writable');
             }
 
-            // Create and write NDEF message
             final message = NdefMessage([
               NdefRecord(
                 typeNameFormat: NdefTypeNameFormat.nfcWellknown,
@@ -55,7 +56,7 @@ class NFCService {
                   0x02,
                   0x65,
                   0x6E,
-                  ...jsonEncode(secureData).codeUnits,
+                  ...jsonEncode(nfcData).codeUnits,
                 ]),
               ),
             ]);
@@ -63,10 +64,24 @@ class NFCService {
             await ndef.write(message);
             print('Write completed successfully');
 
-            // Verify write
-            final verifyResult = await _verifyWrite(tag, secureData);
-            success = verifyResult;
-            completer.complete(verifyResult);
+            // Verify the write by reading back
+            try {
+              final readMessage = await ndef.read();
+              final record = readMessage.records.first;
+              final payload = String.fromCharCodes(record.payload.sublist(3));
+              final readData = jsonDecode(payload);
+              
+              // Verify UID matches
+              if (readData['uid'] != uid) {
+                throw Exception('UID verification failed');
+              }
+
+              // If we get here, write was successful and verified
+              completer.complete(true);
+            } catch (e) {
+              print('Verification error: $e');
+              completer.complete(false);
+            }
 
             await NfcManager.instance.stopSession();
           } catch (e) {
@@ -84,38 +99,11 @@ class NFCService {
     return completer.future;
   }
 
-  static Future<bool> _verifyWrite(
-      NfcTag tag, Map<String, dynamic> expectedData) async {
-    try {
-      final uid = await NFCSecurityService.getTagUID(tag);
-      if (uid == null || uid != expectedData['uid']) {
-        return false;
-      }
-
-      var ndef = Ndef.from(tag);
-      if (ndef == null) return false;
-
-      var message = await ndef.read();
-      var record = message.records.first;
-      var payload = String.fromCharCodes(record.payload.sublist(3));
-      var readData = jsonDecode(payload);
-
-      return NFCSecurityService.verifyTagSignature(
-          readData['uid'],
-          jsonEncode(Map.from(readData)..remove('signature')),
-          readData['timestamp'],
-          readData['signature']);
-    } catch (e) {
-      print('Verification error: $e');
-      return false;
-    }
-  }
-
   static Future<String> readNFCTag() async {
     Completer<String> completer = Completer<String>();
 
     try {
-      NfcManager.instance.startSession(
+      await NfcManager.instance.startSession(
         onDiscovered: (NfcTag tag) async {
           try {
             var ndef = Ndef.from(tag);
@@ -123,41 +111,34 @@ class NFCService {
               throw Exception('Tag is not NDEF formatted');
             }
 
+            // Get tag UID
             final uid = await NFCSecurityService.getTagUID(tag);
             if (uid == null) {
               throw Exception('Could not read tag UID');
             }
 
-            var message = await ndef.read();
-            var record = message.records.first;
-            var payload = String.fromCharCodes(record.payload.sublist(3));
-            var data = jsonDecode(payload);
+            final message = await ndef.read();
+            final record = message.records.first;
+            final payload = String.fromCharCodes(record.payload.sublist(3));
+            final data = jsonDecode(payload);
 
-            // Verify tag authenticity
+            // Verify UID matches
             if (data['uid'] != uid) {
-              throw Exception('Tag UID mismatch - possible cloned tag');
-            }
-
-            final isValid = NFCSecurityService.verifyTagSignature(
-                data['uid'],
-                jsonEncode(Map.from(data)..remove('signature')),
-                data['timestamp'],
-                data['signature']);
-
-            if (!isValid) {
-              throw Exception('Invalid tag signature - possible cloned tag');
+              throw Exception('UID mismatch in stored data');
             }
 
             completer.complete(payload);
             await NfcManager.instance.stopSession();
           } catch (e) {
-            completer.completeError('Error reading tag: $e');
+            print('Error reading tag: $e');
+            completer.completeError(e);
             await NfcManager.instance.stopSession();
           }
         },
       );
     } catch (e) {
-      completer.completeError('Error starting NFC session: $e');
+      print('Error starting NFC session: $e');
+      completer.completeError(e);
     }
 
     return completer.future;

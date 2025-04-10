@@ -5,8 +5,11 @@ import 'services/encryption_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize services
   await ConfigService.initialize();
   await EncryptionService.initialize();
+
   runApp(const MyApp());
 }
 

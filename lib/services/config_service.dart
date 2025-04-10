@@ -15,8 +15,9 @@ class ConfigService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _hmacKey = data['hmac_key'];
-        _nfcPassword = data['nfc_password'];
         _encryptionKey = data['encryption_key'];
+        print('Config initialized successfully');
+        print('Encryption key length: ${_encryptionKey?.length}');
       } else {
         throw Exception('Failed to load API configuration');
       }

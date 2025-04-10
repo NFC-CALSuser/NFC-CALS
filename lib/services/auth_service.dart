@@ -13,44 +13,67 @@ class AuthService {
 
   static Future<Map<String, dynamic>?> login(String id, String password) async {
     try {
-      final studentsResponse = await http.get(
-          Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/students_encrypted.json'));
-      final instructorsResponse = await http
-          .get(Uri.parse('${ConfigService.baseUrl}/NFC-Server/data/instructors_encrypted.json'));
+      print('Fetching encrypted data from server...');
 
-      if (studentsResponse.statusCode == 200 && instructorsResponse.statusCode == 200) {
-        // Decrypt the responses
-        final studentsEncrypted = jsonDecode(studentsResponse.body);
-        final instructorsEncrypted = jsonDecode(instructorsResponse.body);
+      final studentsResponse = await http.get(Uri.parse(
+          'https://nfc-calsuser.github.io/NFC-CALS/NFC-Server/data/students_encrypted.json'));
+      final instructorsResponse = await http.get(Uri.parse(
+          'https://nfc-calsuser.github.io/NFC-CALS/NFC-Server/data/instructors_encrypted.json'));
 
-        final studentsData = EncryptionService.decryptData(
-          studentsEncrypted['data'],
-          studentsEncrypted['iv']
-        );
+      if (studentsResponse.statusCode == 200 &&
+          instructorsResponse.statusCode == 200) {
+        try {
+          print('Decrypting student data...');
+          final studentsEncrypted = jsonDecode(studentsResponse.body);
+          final studentsData = EncryptionService.decryptData(
+              studentsEncrypted['data'], studentsEncrypted['iv']);
 
-        final instructorsData = EncryptionService.decryptData(
-          instructorsEncrypted['data'],
-          instructorsEncrypted['iv']
-        );
+          print('Decrypting instructor data...');
+          final instructorsEncrypted = jsonDecode(instructorsResponse.body);
+          final instructorsData = EncryptionService.decryptData(
+              instructorsEncrypted['data'], instructorsEncrypted['iv']);
 
-        final hashedPassword = hashPassword(password);
+          final hashedPassword = hashPassword(password);
 
-        // Check students
-        final student = studentsData['students'].firstWhere(
-          (s) => s['id'].toString() == id && s['password'] == hashedPassword,
-          orElse: () => null,
-        );
-        if (student != null) {
-          return {'type': 'student', 'data': student};
-        }
+          // Check credentials
+          print('Checking credentials...');
 
-        // Check instructors
-        final instructor = instructorsData['instructors'].firstWhere(
-          (i) => i['id'].toString() == id && i['password'] == hashedPassword,
-          orElse: () => null,
-        );
-        if (instructor != null) {
-          return {'type': 'instructor', 'data': instructor};
+          // Check students
+          final student = studentsData['students'].firstWhere(
+            (s) => s['id'].toString() == id && s['password'] == hashedPassword,
+            orElse: () => null,
+          );
+
+          if (student != null) {
+            return {
+              'type': 'student',
+              'data': {
+                'id': student['id'],
+                'name': student['name'],
+                'email': student['email']
+              }
+            };
+          }
+
+          // Check instructors
+          final instructor = instructorsData['instructors'].firstWhere(
+            (i) => i['id'].toString() == id && i['password'] == hashedPassword,
+            orElse: () => null,
+          );
+
+          if (instructor != null) {
+            return {
+              'type': 'instructor',
+              'data': {
+                'id': instructor['id'],
+                'name': instructor['name'],
+                'email': instructor['email']
+              }
+            };
+          }
+        } catch (e) {
+          print('Decryption error: $e');
+          throw Exception('Failed to decrypt data');
         }
       }
       return null;
@@ -62,7 +85,8 @@ class AuthService {
 
   // Utility method to fetch courses
   static Future<List<dynamic>> getCourses() async {
-    final response = await http.get(Uri.parse('${ConfigService.baseUrl}/courses.json'));
+    final response =
+        await http.get(Uri.parse('${ConfigService.baseUrl}/courses.json'));
     if (response.statusCode == 200) {
       return json.decode(response.body)['courses'];
     }
@@ -71,7 +95,8 @@ class AuthService {
 
   // Utility method to fetch classes
   static Future<List<dynamic>> getClasses() async {
-    final response = await http.get(Uri.parse('${ConfigService.baseUrl}/classes.json'));
+    final response =
+        await http.get(Uri.parse('${ConfigService.baseUrl}/classes.json'));
     if (response.statusCode == 200) {
       return json.decode(response.body)['classes'];
     }
@@ -90,7 +115,7 @@ class AuthService {
         'Content-Type': 'application/json',
       },
     );
-    
+
     if (response.statusCode == 200) {
       return response.body;
     }

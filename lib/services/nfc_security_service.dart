@@ -1,7 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data'; // Add this import
 import 'package:crypto/crypto.dart';
 import 'package:nfc_manager/nfc_manager.dart';
-import 'package:nfc_manager/platform_tags.dart';  // Add this import
+import 'package:nfc_manager/platform_tags.dart';
 import '../services/config_service.dart';
 
 class NFCSecurityService {
@@ -19,12 +20,23 @@ class NFCSecurityService {
 
   static Future<String?> getTagUID(NfcTag tag) async {
     try {
-      final tech = NfcA.from(tag);
-      if (tech == null) return null;
+      // Try NfcA first
+      final nfcA = NfcA.from(tag);
+      if (nfcA != null) {
+        final uidBytes = nfcA.identifier;
+        return uidBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      }
+
+      // Try other tag types if NfcA fails
+      final identifier = tag.data['mifareclassic']?['identifier'] as Uint8List? ??
+                        tag.data['mifareultralight']?['identifier'] as Uint8List? ??
+                        tag.data['isodep']?['identifier'] as Uint8List?;
       
-      // Get tag UID bytes
-      final uidBytes = tech.identifier;
-      return uidBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      if (identifier != null) {
+        return identifier.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      }
+
+      throw Exception('Unable to get tag UID');
     } catch (e) {
       print('Error getting tag UID: $e');
       return null;
