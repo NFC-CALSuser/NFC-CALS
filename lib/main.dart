@@ -6,9 +6,14 @@ import 'services/encryption_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize services
-  await ConfigService.initialize();
-  await EncryptionService.initialize();
+  try {
+    // Initialize services
+    await ConfigService.initialize();
+    await EncryptionService.initialize();
+    print('Services initialized successfully');
+  } catch (e) {
+    print('Error initializing services: $e');
+  }
 
   runApp(const MyApp());
 }
@@ -23,9 +28,15 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      initialRoute: '/', // Add this line
+      initialRoute: '/',
       routes: {
         '/': (context) => const LoginScreen(),
+      },
+      // Handle back button navigation
+      onGenerateRoute: (settings) {
+        return MaterialPageRoute(
+          builder: (context) => const LoginScreen(),
+        );
       },
     );
   }

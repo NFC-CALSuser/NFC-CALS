@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Instructor View</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f0f2f5;
+      padding: 40px;
+    }
+
+    .logo-top {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+
+    .logo-top img {
+      width: 100px;
+    }
+
+    .search-box {
+      max-width: 500px;
+      margin: 0 auto 30px auto;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      background: white;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    .search-box input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    .search-box button {
+      background-color: #0077cc;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .search-box button:hover {
+      background-color: #005fa3;
+    }
+
+    .card {
+      background: white;
+      max-width: 1100px;
+      margin: auto;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      padding: 32px;
+      display: none;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      width: 90px;
+    }
+
+    .title-section {
+      max-width: 80%;
+    }
+
+    h2 {
+      color: #0077cc;
+      margin: 0;
+    }
+
+    .instructor {
+      font-weight: bold;
+      color: #333;
+      margin-top: 8px;
+    }
+
+    .dropdown {
+      margin-bottom: 20px;
+    }
+
+    select {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    .tools {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .tools button {
+      padding: 8px 16px;
+      border: none;
+      background-color: #0077cc;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .tools button:hover {
+      background-color: #005fa3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    th {
+      background-color: #0077cc;
+      color: white;
+      padding: 14px 16px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    td {
+      padding: 14px 16px;
+      background-color: #fff;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f9f9f9;
+    }
+
+    tr:hover td {
+      background-color: #eaf4fb;
+    }
+
+    .error {
+      text-align: center;
+      color: red;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .title-section {
+        max-width: 100%;
+      }
+
+      .logo {
+        align-self: center;
+      }
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background-color: white;
+      }
+
+      .logo-top,
+      .search-box,
+      .dropdown,
+      .tools,
+      .logo {
+        display: none !important;
+      }
+
+      .card {
+        box-shadow: none;
+        padding: 20px;
+        border: none;
+      }
+
+      .card h2,
+      .card p {
+        text-align: center;
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+
+      table {
+        width: 100%;
+        border: 1px solid #ccc;
+        font-size: 16px;
+      }
+
+      th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+      }
+
+      tr:nth-child(even) td {
+        background-color: #f3f3f3 !important;
+      }
+
+      tr:hover td {
+        background-color: white !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="logo-top">
+  <img src="../../assets/images/ksu_shieldlogo_colour_rgb.png" alt="KSU Logo">
+</div>
+
+<div class="search-box">
+  <input type="text" id="instructorInput" placeholder="Enter Instructor ID (e.g. 20242024)" autofocus />
+  <button onclick="fetchData()">Search</button>
+</div>
+
+<div id="errorMessage" class="error"></div>
+
+<div class="card" id="card-content">
+  <div class="header">
+    <div class="title-section">
+      <h2 id="courseTitle">Instructor View</h2>
+      <p class="instructor" id="instructorName"></p>
+    </div>
+    <img src="../../assets/images/ksu_shieldlogo_colour_rgb.png" alt="KSU Logo" class="logo">
+  </div>
+
+  <div class="dropdown">
+    <label for="courseSelect">Select Course:</label>
+    <select id="courseSelect" onchange="updateCourseTable()"></select>
+  </div>
+
+  <div class="tools">
+    <button onclick="printPage()">🖨️ Print</button>
+    <button onclick="exportCSV()">📥 Export CSV</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Student ID</th>
+        <th>Name</th>
+        <th>Absence %</th>
+        <th>Absence Dates</th>
+      </tr>
+    </thead>
+    <tbody id="studentsTable"></tbody>
+  </table>
+</div>
+
+<script>
+let globalData = {};
+let selectedInstructorID = "";
+
+document.getElementById("instructorInput").addEventListener("keypress", function (e) {
+  if (e.key === "Enter") {
+    fetchData();
+  }
+});
+
+function fetchData() {
+  const inputID = document.getElementById("instructorInput").value.trim();
+  const error = document.getElementById("errorMessage");
+  const card = document.getElementById("card-content");
+  const select = document.getElementById("courseSelect");
+
+  error.textContent = "";
+  card.style.display = "none";
+
+  fetch("https://cals-server-12aff9883ee5.herokuapp.com/instructor_view")
+    .then(res => res.json())
+    .then(data => {
+      if (!data[inputID]) {
+        error.textContent = "❌ Instructor ID not found. Please try again.";
+        return;
+      }
+
+      selectedInstructorID = inputID;
+      globalData = data[inputID];
+      document.getElementById("instructorName").textContent =
+        `Instructor: ${globalData.instructor_name} (ID: ${inputID})`;
+
+      const courses = Object.keys(globalData.courses);
+      select.innerHTML = courses.map(course =>
+        `<option value="${course}">${course}</option>`).join('');
+
+      updateCourseTable();
+      card.style.display = "block";
+    });
+}
+
+function updateCourseTable() {
+  const course = document.getElementById("courseSelect").value;
+  const students = globalData.courses[course].students;
+  const tbody = document.getElementById("studentsTable");
+  document.getElementById("courseTitle").textContent = `Instructor View: ${course}`;
+  tbody.innerHTML = "";
+
+  Object.entries(students).forEach(([id, info]) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${id}</td>
+      <td>${info.student_name}</td>
+      <td>${info.current_percentage}</td>
+      <td>${info.absence_dates.join(", ")}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function exportCSV() {
+  const course = document.getElementById("courseSelect").value;
+  const students = globalData.courses[course].students;
+  let csv = "Student ID,Name,Absence %,Absence Dates\n";
+
+  Object.entries(students).forEach(([id, info]) => {
+    csv += `${id},"${info.student_name}",${info.current_percentage},"${info.absence_dates.join(" / ")}"\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${course}_attendance.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function printPage() {
+  window.print();
+}
+</script>
+
+</body>
+</html>

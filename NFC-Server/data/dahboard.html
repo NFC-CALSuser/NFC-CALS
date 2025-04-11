@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Attendance Dashboard</title>
+  <style>
+    :root {
+      --bg-color: #f0f2f5;
+      --card-bg: #fff;
+      --text-color: #000;
+      --primary: #0077cc;
+      --primary-dark: #005fa3;
+    }
+    [data-theme="dark"] {
+      --bg-color: #1e1e1e;
+      --card-bg: #2a2a2a;
+      --text-color: #fff;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      padding: 40px;
+    }
+
+    .logo-top {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+
+    .logo-top img {
+      width: 100px;
+    }
+
+    .tabs {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+      gap: 20px;
+    }
+
+    .tabs button {
+      padding: 10px 20px;
+      border: none;
+      background-color: var(--primary);
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .tabs button.active {
+      background-color: var(--primary-dark);
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .card {
+      background: var(--card-bg);
+      max-width: 1000px;
+      margin: auto;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      padding: 32px;
+    }
+
+    .search-box,
+    .tools {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    input,
+    select,
+    button {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      background-color: var(--primary);
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: var(--primary-dark);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      padding: 14px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .filter-box {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .toggle-theme {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+    }
+
+    @media print {
+      .logo-top,
+      .tabs,
+      .search-box,
+      .tools,
+      .toggle-theme {
+        display: none !important;
+      }
+
+      .card {
+        box-shadow: none;
+        border: none;
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body data-theme="light">
+  <div class="toggle-theme">
+    <button onclick="toggleTheme()">🌓 Toggle Theme</button>
+  </div>
+  <div class="logo-top">
+    <img src="../../assets/images/ksu_shieldlogo_colour_rgb.png" alt="KSU Logo">
+  </div>
+
+  <div class="tabs">
+    <button onclick="switchTab('instructor')" class="active">Instructor View</button>
+    <button onclick="switchTab('student')">Student View</button>
+  </div>
+
+  <div id="instructor" class="section active">
+    <div class="card">
+      <div class="search-box">
+        <input type="text" id="instructorInput" placeholder="Enter Instructor ID" />
+        <button onclick="fetchInstructor()">Search</button>
+        <button onclick="exportInstructorCSV()">📥 Export CSV</button>
+        <button onclick="window.print()">🖨️ Print</button>
+      </div>
+      <div id="instructorContent"></div>
+    </div>
+  </div>
+
+  <div id="student" class="section">
+    <div class="card">
+      <div class="search-box">
+        <input type="text" id="studentInput" placeholder="Enter Student ID" />
+        <button onclick="fetchStudent()">Search</button>
+        <button onclick="exportStudentCSV()">📥 Export CSV</button>
+        <button onclick="window.print()">🖨️ Print</button>
+      </div>
+      <div id="studentContent"></div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll('.tabs button').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+      document.getElementById(tab).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function toggleTheme() {
+      const body = document.body;
+      body.setAttribute('data-theme', body.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
+    }
+
+    function fetchInstructor() {
+      const id = document.getElementById('instructorInput').value.trim();
+      fetch('https://cals-server-12aff9883ee5.herokuapp.com/instructor_view')
+        .then(res => res.json())
+        .then(data => {
+          if (!data[id]) {
+            document.getElementById('instructorContent').innerHTML = '<p style="color:red">Instructor not found.</p>';
+            return;
+          }
+          const instructor = data[id];
+          let html = `<h2>${instructor.instructor_name} (ID: ${id})</h2>`;
+let totalPercentage = 0, studentCount = 0;
+
+for (const course in instructor.courses) {
+  html += `<h3>Course: ${course}</h3><table><thead><tr><th>Student ID</th><th>Name</th><th>%</th><th>Dates</th></tr></thead><tbody>`;
+  for (const sid in instructor.courses[course].students) {
+    const s = instructor.courses[course].students[sid];
+    const percent = parseFloat(s.current_percentage.replace('%', '')) || 0;
+    totalPercentage += percent;
+    studentCount++;
+    html += `<tr><td>${sid}</td><td>${s.student_name}</td><td>${s.current_percentage}</td><td>${s.absence_dates.join(', ')}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+}
+const avg = studentCount ? (totalPercentage / studentCount).toFixed(2) : '0.00';
+          html += `<p style='text-align:center; font-weight:bold;'>Average Absence: ${avg}%</p>`;
+          document.getElementById('instructorContent').innerHTML = html;
+        });
+    }
+
+    function fetchStudent() {
+      const id = document.getElementById('studentInput').value.trim();
+      fetch('https://cals-server-12aff9883ee5.herokuapp.com/students_view')
+        .then(res => res.json())
+        .then(data => {
+          const student = data.read_only.find(s => s.student_id === id);
+          if (!student) {
+            document.getElementById('studentContent').innerHTML = '<p style="color:red">Student not found.</p>';
+            return;
+          }
+          let html = `<h2>${student.student_name} (ID: ${student.student_id})</h2><table><thead><tr><th>Course</th><th>%</th><th>Dates</th></tr></thead><tbody>`;
+          student.courses.forEach(course => {
+            html += `<tr><td>${course.course}</td><td>${course.current_percentage}</td><td>${course.absence_dates.join(', ') || 'None'}</td></tr>`;
+          });
+          html += `</tbody></table>`;
+          let totalPercentage = 0, courseCount = 0;
+          student.courses.forEach(course => {
+            const percent = parseFloat(course.current_percentage.replace('%', '')) || 0;
+            totalPercentage += percent;
+            courseCount++;
+            html += `<tr><td>${course.course}</td><td>${course.current_percentage}</td><td>${course.absence_dates.join(', ') || 'None'}</td></tr>`;
+          });
+          const avg = courseCount ? (totalPercentage / courseCount).toFixed(2) : '0.00';
+          html += `</tbody></table><p style='text-align:center; font-weight:bold;'>Average Absence: ${avg}%</p>`;
+          document.getElementById('studentContent').innerHTML = html;
+        });
+    }
+
+    function exportInstructorCSV() {
+      const content = document.getElementById('instructorContent');
+      if (!content.innerText.trim()) return alert("Nothing to export");
+      const rows = [...content.querySelectorAll('table tbody tr')];
+      let csv = "Course,Student ID,Name,Absence %,Dates\n";
+      rows.forEach(row => {
+        const course = row.closest('table').previousElementSibling.innerText.replace('Course: ', '');
+        const cells = [...row.children].map(cell => `"${cell.innerText}"`).join(',');
+        csv += `${course},${cells}\n`;
+      });
+      downloadCSV(csv, 'instructor_data.csv');
+    }
+
+    function exportStudentCSV() {
+      const content = document.getElementById('studentContent');
+      if (!content.innerText.trim()) return alert("Nothing to export");
+      const rows = [...content.querySelectorAll('table tbody tr')];
+      let csv = "Course,Absence %,Dates\n";
+      rows.forEach(row => {
+        const cells = [...row.children].map(cell => `"${cell.innerText}"`).join(',');
+        csv += `${cells}\n`;
+      });
+      downloadCSV(csv, 'student_data.csv');
+    }
+
+    function downloadCSV(content, filename) {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.click();
+    }
+  </script>
+</body>
+</html>

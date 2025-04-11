@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../nfc_service.dart';
+import '../services/encryption_service.dart'; // Import EncryptionService
 import 'login_screen.dart';
 import 'package:http/http.dart' as http;
 import '../widgets/nfc_instruction_overlay.dart';
@@ -92,12 +93,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
       final now = DateTime.now();
       final recordId = now.millisecondsSinceEpoch.toString();
 
-      // First create the attendance record
-      await _createAttendanceRecord(recordId, now);
-      print('Attendance record created with ID: $recordId');
-
-      // Then prepare NFC data
-      final nfcData = {
+      // Prepare session data
+      final sessionData = {
         'status': 'active',
         'instructor': widget.instructorId,
         'course': selectedCourse,
@@ -107,55 +104,31 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
         'record_id': recordId,
       };
 
-      // Show NFC write instruction
-      _showNFCMessage('Hold your device near the NFC tag');
+      // Encrypt session data for server
+      final encryptedData = await EncryptionService.encryptData(jsonEncode(sessionData));
 
-      // Write to NFC tag with retries
-      bool writeSuccess = false;
-      int attempts = 0;
-      const maxAttempts = 3;
+      // Create attendance record with encrypted data
+      await _createAttendanceRecord(recordId, now, encryptedData);
+      print('Attendance record created with ID: $recordId');
 
-      while (!writeSuccess && attempts < maxAttempts) {
-        attempts++;
-        try {
-          writeSuccess = await NFCService.writeNFCTag(jsonEncode(nfcData));
-          if (writeSuccess) {
-            // Verify the write
-            final verificationResult = await _verifyNFCTag(nfcData);
-            if (!verificationResult.verified) {
-              writeSuccess = false;
-              throw Exception(verificationResult.error);
-            }
-          }
-        } catch (e) {
-          print('Write attempt $attempts failed: $e');
-          if (attempts < maxAttempts) {
-            await Future.delayed(const Duration(seconds: 1));
-            _showNFCMessage('Write failed, trying again... (Attempt $attempts of $maxAttempts)');
-          }
-        }
-      }
-
+      // Write encrypted data to NFC tag
+      bool writeSuccess = await NFCService.writeNFCTag(jsonEncode(sessionData));
+      
       if (!writeSuccess) {
-        // If all write attempts fail, delete the attendance record
+        // Clean up if write fails
         await http.delete(
           Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
         );
-        throw Exception('Failed to write to NFC tag after $maxAttempts attempts');
+        throw Exception('Failed to write to NFC tag');
       }
 
-      // Update state with active session
+      // Update state and start countdown
       setState(() {
         _hasActiveSession = true;
         _activeSessionId = recordId;
-        _activeSessionData = {
-          'course': selectedCourse,
-          'classroom': selectedClass,
-          'startTime': now.toString(),
-        };
+        _activeSessionData = sessionData;
       });
 
-      // Start countdown and show success message
       _startCountdown();
       _showNFCMessage('Session started successfully', isSuccess: true);
       await Future.delayed(const Duration(seconds: 2));
@@ -163,12 +136,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
     } catch (e) {
       print('Error starting session: $e');
-      String errorMessage = e.toString();
-      if (errorMessage.contains('Too many requests')) {
-        _showNFCMessage('Rate limit exceeded. Please wait a minute.', isSuccess: false);
-      } else {
-        _showNFCMessage('Error: $errorMessage', isSuccess: false);
-      }
+      _showNFCMessage('Error: ${e.toString()}', isSuccess: false);
       await Future.delayed(const Duration(seconds: 2));
       _hideNFCMessage();
     } finally {
@@ -176,29 +144,40 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     }
   }
 
-  Future<void> _createAttendanceRecord(String recordId, DateTime startTime) async {
+  Future<void> _createAttendanceRecord(String recordId, DateTime startTime, Map<String, String> encryptedSessionData) async {
     print('Creating attendance record...');
-    final response = await http.post(
-      Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'id': recordId,
-        'course_id': selectedCourse,
-        'classroom': selectedClass,
-        'date': startTime.toIso8601String(),
-        'instructor_id': widget.instructorId,
-        'students_ids': [],
-        'status': 'active'
-      }),
-    );
+    
+    try {
+      final response = await http.post(
+        Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id': recordId, // Use plain recordId for now
+          'encrypted_data': encryptedSessionData,
+          'status': 'active',
+          'students_ids': []
+        }),
+      );
 
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      print('Server error: ${response.statusCode} - ${response.body}');
-      throw Exception('Failed to create attendance record: ${response.body}');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        print('Server response: ${response.statusCode} - ${response.body}');
+        throw Exception('Failed to create attendance record: ${response.body}');
+      }
+
+      // Verify record creation
+      final verifyResponse = await http.get(
+        Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+      );
+
+      if (verifyResponse.statusCode != 200) {
+        throw Exception('Failed to verify attendance record creation');
+      }
+
+      print('Attendance record created successfully');
+    } catch (e) {
+      print('Error creating attendance record: $e');
+      throw e;
     }
-
-    print('Attendance record created successfully');
-    return;
   }
 
   void _startCountdown() {
@@ -215,172 +194,108 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     });
   }
 
-  Future<void> _markAbsentStudents(String attendanceId) async {
-    try {
-      // Get attendance record to get present students
-      final attendanceResponse = await http.get(
-        Uri.parse(
-            'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$attendanceId'),
-      );
-
-      if (attendanceResponse.statusCode != 200) {
-        throw Exception('Failed to fetch attendance record');
-      }
-
-      final attendanceData = jsonDecode(attendanceResponse.body);
-      final presentStudents =
-          List<String>.from(attendanceData['students_ids'] ?? []);
-      final courseId = attendanceData['course_id'];
-      final instructorId = attendanceData['instructor_id'];
-      final attendanceDate = attendanceData['date'].toString().split(' ')[0];
-      final formattedDate =
-          DateTime.parse(attendanceDate).toString().split(' ')[0];
-
-      // Get instructor view data
-      final instructorResponse = await http.get(
-        Uri.parse(
-            'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
-      );
-
-      // Get students view data
-      final studentsResponse = await http.get(
-        Uri.parse(
-            'https://cals-server-12aff9883ee5.herokuapp.com/students_view'),
-      );
-
-      if (instructorResponse.statusCode != 200 ||
-          studentsResponse.statusCode != 200) {
-        throw Exception('Failed to fetch required data');
-      }
-
-      final instructorData = jsonDecode(instructorResponse.body);
-      final studentsData = jsonDecode(studentsResponse.body);
-
-      // Get enrolled students
-      final enrolledStudents = instructorData['20242024']['courses'][courseId]
-              ['students']
-          .keys
-          .toList();
-
-      // Determine absent students
-      final absentStudents = enrolledStudents
-          .where((student) => !presentStudents.contains(student))
-          .toList();
-
-      // Update instructor view
-      for (final studentId in absentStudents) {
-        var student = instructorData['20242024']['courses'][courseId]
-            ['students'][studentId];
-
-        // Update percentage
-        var currentPercentage =
-            int.parse(student['current_percentage'].replaceAll('%', ''));
-        student['current_percentage'] = '${currentPercentage + 3}%';
-
-        // Add absence date
-        if (student['absence_dates'] == null) {
-          student['absence_dates'] = [formattedDate];
-        } else {
-          if (!student['absence_dates'].contains(formattedDate)) {
-            student['absence_dates'].add(formattedDate);
-          }
-        }
-      }
-
-      // Update students view
-      for (var student in studentsData['read_only']) {
-        if (absentStudents.contains(student['student_id'])) {
-          for (var course in student['courses']) {
-            if (course['course'] == courseId) {
-              var currentPercentage =
-                  int.parse(course['current_percentage'].replaceAll('%', ''));
-              course['current_percentage'] = '${currentPercentage + 3}%';
-
-              if (course['absence_dates'] == null) {
-                course['absence_dates'] = [formattedDate];
-              } else {
-                if (!course['absence_dates'].contains(formattedDate)) {
-                  course['absence_dates'].add(formattedDate);
-                }
-              }
-              break;
-            }
-          }
-        }
-      }
-
-      // Save updated data
-      final headers = {'Content-Type': 'application/json'};
-
-      // Update instructor view
-      await http.put(
-        Uri.parse(
-            'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
-        headers: headers,
-        body: jsonEncode(instructorData),
-      );
-
-      // Update students view
-      await http.put(
-        Uri.parse(
-            'https://cals-server-12aff9883ee5.herokuapp.com/students_view'),
-        headers: headers,
-        body: jsonEncode(studentsData),
-      );
-    } catch (e) {
-      throw Exception('Failed to mark absent students: $e');
-    }
-  }
-
   Future<void> _endSession() async {
     try {
       if (_activeSessionId != null) {
-        // Mark absent students before ending session
-        await _markAbsentStudents(_activeSessionId!);
+        setState(() => _isStartingSession = true);
+        _showNFCMessage('Ending session...', isSuccess: false);
 
-        // Get current attendance record to include current students_ids
+        // Get current attendance record
         final getResponse = await http.get(
-          Uri.parse(
-              'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
+          Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/${_activeSessionId}'),
         );
 
         if (getResponse.statusCode == 200) {
-          // Delete the attendance record
-          final deleteResponse = await http.delete(
-            Uri.parse(
-                'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$_activeSessionId'),
+          final currentRecord = jsonDecode(getResponse.body);
+          
+          // Update session status to ended first
+          final updateResponse = await http.patch(
+            Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/${_activeSessionId}'),
             headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'status': 'ended',
+              'encrypted_data': currentRecord['encrypted_data'],
+              'students_ids': currentRecord['students_ids']
+            }),
           );
 
-          if (deleteResponse.statusCode == 200) {
-            _sessionTimer?.cancel();
+          if (updateResponse.statusCode != 200) {
+            throw Exception('Failed to update session status');
+          }
+
+          // Process attendance marking
+          try {
+            // Get instructor view data
+            final instructorResponse = await http.get(
+              Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
+            );
+
+            if (instructorResponse.statusCode != 200) {
+              throw Exception('Failed to fetch instructor data');
+            }
+
+            final instructorData = jsonDecode(instructorResponse.body);
+            final courseData = instructorData[widget.instructorId]['courses'][_activeSessionData!['course']];
+            
+            // Get enrolled students
+            final enrolledStudents = courseData['students'].keys.toList();
+            final presentStudents = currentRecord['students_ids'];
+            
+            // Calculate absent students
+            final absentStudents = enrolledStudents.where((id) => !presentStudents.contains(id)).toList();
+
+            // Update attendance records
+            for (final studentId in absentStudents) {
+              final student = courseData['students'][studentId];
+              int currentPercentage = int.parse(student['current_percentage'].replaceAll('%', ''));
+              currentPercentage += 3;
+              student['current_percentage'] = '$currentPercentage%';
+
+              if (student['absence_dates'] == null) {
+                student['absence_dates'] = [];
+              }
+              student['absence_dates'].add(DateTime.now().toIso8601String().split('T')[0]);
+            }
+
+            // Update instructor view
+            final updateInstructorResponse = await http.put(
+              Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(instructorData),
+            );
+
+            if (updateInstructorResponse.statusCode != 200) {
+              throw Exception('Failed to update instructor view');
+            }
+
             setState(() {
               _hasActiveSession = false;
               _activeSessionId = null;
               _activeSessionData = null;
-              _remainingMinutes = 50;
+              _sessionTimer?.cancel();
             });
-
-            if (!mounted) return;
-            _showNFCMessage(
-              'Session ended and absences marked successfully',
-              isSuccess: true,
-            );
+            
+            _showNFCMessage('Session ended successfully', isSuccess: true);
             await Future.delayed(const Duration(seconds: 2));
             _hideNFCMessage();
-          } else {
-            throw Exception('Failed to delete attendance record');
+          } catch (e) {
+            print('Error processing attendance: $e');
+            throw Exception('Failed to process attendance marking');
           }
+        } else {
+          throw Exception('Failed to fetch current session data');
         }
       }
     } catch (e) {
+      print('Error ending session: $e');
       if (!mounted) return;
-      _showNFCMessage(
-        'Error ending session: ${e.toString()}',
-        isSuccess: false,
-      );
+      _showNFCMessage('Error ending session: ${e.toString()}', isSuccess: false);
       await Future.delayed(const Duration(seconds: 2));
       _hideNFCMessage();
+    } finally {
+      if (mounted) {
+        setState(() => _isStartingSession = false);
+      }
     }
   }
 
@@ -463,8 +378,32 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
   }
 
   Future<bool> _onWillPop() async {
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-    return false;
+    if (_hasActiveSession) {
+      // Show confirmation dialog if there's an active session
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Active Session'),
+          content: const Text('Do you want to end the current session?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await _endSession();
+                if (!mounted) return;
+                Navigator.pop(context, true);
+              },
+              child: const Text('End Session'),
+            ),
+          ],
+        ),
+      );
+      return result ?? false;
+    }
+    return true;
   }
 
   void _handleSignOut() {
@@ -702,8 +641,15 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope( // Replace WillPopScope with PopScope
+      canPop: !_hasActiveSession,
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return;
+        final result = await _onWillPop();
+        if (result && mounted) {
+          Navigator.of(context).pop();
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('KSU-Attendance System'),

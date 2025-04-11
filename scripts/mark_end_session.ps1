@@ -35,26 +35,31 @@ if (-not $sessionToProcess) {
 
 Write-Output "Processing attendance record from: $($sessionToProcess.date)"
 
+# Extract date from encrypted data
+$encryptedData = $sessionToProcess.encrypted_data
+$decryptedData = $encryptedData | ConvertFrom-Json
+$dateStr = $decryptedData.startTime
+
+# Parse the ISO date string and format it
+try {
+    $attendanceDate = [DateTime]::Parse($dateStr)
+    $formattedDate = $attendanceDate.ToString("yyyy-MM-dd")
+    Write-Output "Formatted date: $formattedDate"
+} catch {
+    Write-Error "Error parsing date: $_"
+    exit
+}
+
 $courseId = $sessionToProcess.course_id
 $instructorId = $sessionToProcess.instructor_id
 $presentStudents = $sessionToProcess.students_ids
-$attendanceDate = ($sessionToProcess.date -split " ")[0]  # Extract just the date part
-$formattedDate = [DateTime]::ParseExact($attendanceDate, "yyyy-MM-dd", $null).ToString("dd-MM-yyyy")
 
 Write-Output "Course: $courseId, Instructor: $instructorId"
 Write-Output "Present students: $($presentStudents -join ', ')"
-Write-Output "Attendance date (formatted): $formattedDate"
 
 # Create copies of data to modify
 $updatedInstructorData = $instructorViewData | ConvertTo-Json -Depth 10 | ConvertFrom-Json
 $updatedStudentsData = $studentsViewData | ConvertTo-Json -Depth 10 | ConvertFrom-Json
-
-# Validate data
-if (-not $updatedInstructorData.$instructorId -or 
-    -not $updatedInstructorData.$instructorId.courses.$courseId) {
-    Write-Error "Instructor or course not found in instructor view"
-    exit
-}
 
 # Get enrolled students
 $enrolledStudents = $updatedInstructorData.$instructorId.courses.$courseId.students.PSObject.Properties.Name

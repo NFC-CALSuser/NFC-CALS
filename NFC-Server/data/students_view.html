@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Student View</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f0f2f5;
+      padding: 40px;
+    }
+
+    .logo-top {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+
+    .logo-top img {
+      width: 100px;
+    }
+
+    .search-box {
+      max-width: 500px;
+      margin: 0 auto 30px auto;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      background: white;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    .search-box input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    .search-box button {
+      background-color: #0077cc;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .search-box button:hover {
+      background-color: #005fa3;
+    }
+
+    .card {
+      background: white;
+      max-width: 1000px;
+      margin: auto;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      padding: 32px;
+      display: none;
+    }
+
+    h2 {
+      text-align: center;
+      color: #0077cc;
+      margin-top: 0;
+    }
+
+    .student-info {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    .tools {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .tools button {
+      padding: 8px 16px;
+      border: none;
+      background-color: #0077cc;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .tools button:hover {
+      background-color: #005fa3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th {
+      background-color: #0077cc;
+      color: white;
+      padding: 14px 16px;
+      text-align: left;
+    }
+
+    td {
+      padding: 14px 16px;
+      background-color: #fff;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f9f9f9;
+    }
+
+    tr:hover td {
+      background-color: #eaf4fb;
+    }
+
+    .error {
+      text-align: center;
+      color: red;
+      margin-top: 20px;
+    }
+
+    @media print {
+      .logo-top,
+      .search-box,
+      .tools {
+        display: none !important;
+      }
+
+      .card {
+        box-shadow: none;
+        border: none;
+        padding: 20px;
+      }
+
+      h2, .student-info {
+        font-size: 22px;
+        text-align: center;
+      }
+
+      table {
+        font-size: 16px;
+        width: 100%;
+        border: 1px solid #ccc;
+      }
+
+      th, td {
+        border: 1px solid #ccc;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="logo-top">
+  <img src="../../assets/images/ksu_shieldlogo_colour_rgb.png" alt="KSU Logo">
+</div>
+
+<div class="search-box">
+  <input type="text" id="studentInput" placeholder="Enter Student ID (e.g. 442106884)" autofocus />
+  <button onclick="searchStudent()">Search</button>
+</div>
+
+<div id="errorMessage" class="error"></div>
+
+<div class="card" id="studentCard">
+  <h2>Student View</h2>
+  <p class="student-info" id="studentInfo"></p>
+
+  <div class="tools">
+    <button onclick="window.print()">🖨️ Print</button>
+    <button onclick="exportStudentCSV()">📥 Export CSV</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Course</th>
+        <th>Absence %</th>
+        <th>Absence Dates</th>
+      </tr>
+    </thead>
+    <tbody id="studentTableBody"></tbody>
+  </table>
+</div>
+
+<script>
+function searchStudent() {
+  const inputID = document.getElementById("studentInput").value.trim();
+  const card = document.getElementById("studentCard");
+  const info = document.getElementById("studentInfo");
+  const tbody = document.getElementById("studentTableBody");
+  const error = document.getElementById("errorMessage");
+
+  error.textContent = "";
+  card.style.display = "none";
+  tbody.innerHTML = "";
+
+  fetch("https://cals-server-12aff9883ee5.herokuapp.com/students_view")
+    .then(res => res.json())
+    .then(data => {
+      const list = data.read_only;
+      const student = list.find(s => s.student_id === inputID);
+
+      if (!student) {
+        error.textContent = "❌ Student ID not found.";
+        return;
+      }
+
+      info.textContent = `Name: ${student.student_name} (ID: ${student.student_id})`;
+
+      student.courses.forEach(course => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${course.course}</td>
+          <td>${course.current_percentage}</td>
+          <td>${course.absence_dates.length ? course.absence_dates.join(", ") : "None"}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      card.style.display = "block";
+    });
+}
+
+function exportStudentCSV() {
+  const name = document.getElementById("studentInfo").textContent.split(" ")[1];
+  const tbody = document.getElementById("studentTableBody");
+  let csv = "Course,Absence %,Absence Dates\n";
+
+  [...tbody.rows].forEach(row => {
+    const cells = [...row.cells];
+    csv += cells.map(cell => `"${cell.innerText}"`).join(",") + "\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `Student_Attendance_${name}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+</script>
+
+</body>
+</html>

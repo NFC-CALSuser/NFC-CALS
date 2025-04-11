@@ -41,28 +41,61 @@ class EncryptionService {
     return result;
   }
 
-  static Map<String, dynamic> decryptData(
-      String encryptedData, String ivString) {
+  static Future<Map<String, String>> encryptData(String data) async {
     try {
-      print('Decrypting data...');
+      // Generate IV
+      final iv = encrypt.IV.fromSecureRandom(16);
+      
+      // Encrypt data
+      final encrypted = _encrypter.encrypt(data, iv: iv);
+      
+      return {
+        'iv': iv.base64,
+        'data': encrypted.base64
+      };
+    } catch (e) {
+      print('Encryption error: $e');
+      throw Exception('Failed to encrypt data');
+    }
+  }
 
-      // Create IV from base64
+  static Map<String, dynamic> decryptData(String encryptedData, String ivString) {
+    try {
       final iv = encrypt.IV.fromBase64(ivString);
-      print('IV created successfully');
-
-      // Create encrypted instance
       final encrypted = encrypt.Encrypted.fromBase64(encryptedData);
-      print('Encrypted data parsed successfully');
-
-      // Decrypt data
       final decrypted = _encrypter.decrypt(encrypted, iv: iv);
-      print('Data decrypted successfully');
-
-      // Parse JSON
-      return jsonDecode(decrypted) as Map<String, dynamic>;
+      return jsonDecode(decrypted);
     } catch (e) {
       print('Decryption error: $e');
       throw Exception('Failed to decrypt data');
+    }
+  }
+
+  // Add these methods to handle string encryption/decryption
+  static Future<String> encryptString(String text) async {
+    try {
+      final iv = encrypt.IV.fromSecureRandom(16);
+      final encrypted = _encrypter.encrypt(text, iv: iv);
+      
+      return base64.encode(
+        iv.bytes + encrypted.bytes
+      );
+    } catch (e) {
+      print('String encryption error: $e');
+      throw Exception('Failed to encrypt string');
+    }
+  }
+
+  static Future<String> decryptString(String encryptedText) async {
+    try {
+      final bytes = base64.decode(encryptedText);
+      final iv = encrypt.IV(bytes.sublist(0, 16));
+      final encrypted = encrypt.Encrypted(bytes.sublist(16));
+      
+      return _encrypter.decrypt(encrypted, iv: iv);
+    } catch (e) {
+      print('String decryption error: $e');
+      throw Exception('Failed to decrypt string');
     }
   }
 }

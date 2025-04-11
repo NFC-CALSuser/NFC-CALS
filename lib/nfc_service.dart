@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
 import '../services/nfc_security_service.dart';
+import '../services/encryption_service.dart';
 
 class NFCService {
   static Future<bool> isAvailable() async {
@@ -20,28 +21,21 @@ class NFCService {
           try {
             print('Tag discovered, attempting to write...');
 
-            // Get the tag UID first
+            // Get tag UID
             final uid = await NFCSecurityService.getTagUID(tag);
             if (uid == null) {
               throw Exception('Could not read tag UID');
             }
 
-            // Add UID to the data being written
+            // Add security data
             nfcData['uid'] = uid;
-            
-            // Add timestamp for security
             final timestamp = DateTime.now().toIso8601String();
             nfcData['timestamp'] = timestamp;
             
-            // Generate signature
-            final signature = NFCSecurityService.generateTagSignature(
-              uid,
-              jsonEncode(nfcData),
-              timestamp
-            );
-            nfcData['signature'] = signature;
-
-            // Write to tag
+            // Encrypt the data
+            final encryptedData = await EncryptionService.encryptData(jsonEncode(nfcData));
+            
+            // Create NDEF message with encrypted data
             var ndef = Ndef.from(tag);
             if (ndef == null || !ndef.isWritable) {
               throw Exception('Tag is not NDEF formatted or not writable');
@@ -56,7 +50,7 @@ class NFCService {
                   0x02,
                   0x65,
                   0x6E,
-                  ...jsonEncode(nfcData).codeUnits,
+                  ...jsonEncode(encryptedData).codeUnits,
                 ]),
               ),
             ]);
@@ -64,25 +58,7 @@ class NFCService {
             await ndef.write(message);
             print('Write completed successfully');
 
-            // Verify the write by reading back
-            try {
-              final readMessage = await ndef.read();
-              final record = readMessage.records.first;
-              final payload = String.fromCharCodes(record.payload.sublist(3));
-              final readData = jsonDecode(payload);
-              
-              // Verify UID matches
-              if (readData['uid'] != uid) {
-                throw Exception('UID verification failed');
-              }
-
-              // If we get here, write was successful and verified
-              completer.complete(true);
-            } catch (e) {
-              print('Verification error: $e');
-              completer.complete(false);
-            }
-
+            completer.complete(true);
             await NfcManager.instance.stopSession();
           } catch (e) {
             print('Error in NFC write: $e');
@@ -111,23 +87,18 @@ class NFCService {
               throw Exception('Tag is not NDEF formatted');
             }
 
-            // Get tag UID
-            final uid = await NFCSecurityService.getTagUID(tag);
-            if (uid == null) {
-              throw Exception('Could not read tag UID');
-            }
-
             final message = await ndef.read();
             final record = message.records.first;
             final payload = String.fromCharCodes(record.payload.sublist(3));
-            final data = jsonDecode(payload);
+            
+            // Decrypt the data
+            final encryptedData = jsonDecode(payload);
+            final decryptedData = await EncryptionService.decryptData(
+              encryptedData['data'],
+              encryptedData['iv']
+            );
 
-            // Verify UID matches
-            if (data['uid'] != uid) {
-              throw Exception('UID mismatch in stored data');
-            }
-
-            completer.complete(payload);
+            completer.complete(jsonEncode(decryptedData));
             await NfcManager.instance.stopSession();
           } catch (e) {
             print('Error reading tag: $e');

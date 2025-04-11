@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../nfc_service.dart';
 import 'dart:convert';
-import './login_screen.dart'; // Add this import
+import './login_screen.dart'; 
 import 'package:http/http.dart' as http;
+import '../services/encryption_service.dart'; 
 
 class StudentDashboard extends StatelessWidget {
   final Map<String, dynamic> studentData;
@@ -19,75 +20,84 @@ class StudentDashboard extends StatelessWidget {
   }
 
   Future<void> _markAttendance(BuildContext context) async {
-    bool available = await NFCService.isAvailable();
-    if (!available) {
-      _showMessage(context, 'NFC is not available on this device');
-      return;
-    }
-
-    _showMessage(context, 'Hold your device near the classroom NFC tag');
-    String result = await NFCService.readNFCTag();
-
     try {
-      Map<String, dynamic> sessionData = jsonDecode(result);
+      bool available = await NFCService.isAvailable();
+      if (!available) {
+        _showMessage(context, 'NFC is not available on this device');
+        return;
+      }
 
-      if (sessionData['status'] == 'active') {
-        // Get current attendance record
-        final getResponse = await http.get(
-          Uri.parse(
-              'https://cals-server-12aff9883ee5.herokuapp.com/attendance/${sessionData['record_id']}'),
-        );
+      _showMessage(context, 'Hold your device near the classroom NFC tag');
+      String result = await NFCService.readNFCTag();
+      print('NFC Tag Read Result: $result');
 
-        if (getResponse.statusCode == 200) {
-          final currentRecord = jsonDecode(getResponse.body);
+      final tagData = jsonDecode(result);
+      print('Tag Data: $tagData');
 
-          // First check session status
-          if (currentRecord['status'] == 'ended') {
-            _showMessage(context, 'Session has ended.');
-            return;
-          }
-
-          // Then check time window
-          DateTime startTime = DateTime.parse(sessionData['startTime']);
-          DateTime now = DateTime.now();
-          Duration difference = now.difference(startTime);
-
-          if (difference.inMinutes <= int.parse(sessionData['duration'])) {
-            final currentStudentIds =
-                List<String>.from(currentRecord['students_ids'] ?? []);
-
-            if (!currentStudentIds.contains(studentData['id'].toString())) {
-              currentStudentIds.add(studentData['id'].toString());
-
-              final updateResponse = await http.patch(
-                Uri.parse(
-                    'https://cals-server-12aff9883ee5.herokuapp.com/attendance/${sessionData['record_id']}'),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({'students_ids': currentStudentIds}),
-              );
-
-              if (updateResponse.statusCode == 200) {
-                _showMessage(context, 'Attendance marked successfully!');
-                return;
-              }
-            } else {
-              _showMessage(
-                  context, 'Attendance already marked for this session');
-              return;
+      if (tagData['status'] == 'active') {
+        final recordId = tagData['record_id'];
+        print('Fetching attendance record: $recordId');
+        
+        // Add retry mechanism for fetching attendance record
+        int retries = 3;
+        http.Response? getResponse;
+        
+        while (retries > 0) {
+          try {
+            getResponse = await http.get(
+              Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+            );
+            if (getResponse.statusCode == 200) break;
+            
+            retries--;
+            if (retries > 0) {
+              await Future.delayed(const Duration(seconds: 1));
+              print('Retrying attendance record fetch... ($retries attempts left)');
             }
-          } else {
-            _showMessage(context,
-                'Session has expired. Please contact your instructor.');
-            return;
+          } catch (e) {
+            print('Error fetching attendance record: $e');
           }
         }
-        _showMessage(context, 'Failed to mark attendance. Please try again.');
+
+        if (getResponse == null || getResponse.statusCode != 200) {
+          throw Exception('Failed to fetch attendance record after multiple attempts');
+        }
+
+        final currentRecord = jsonDecode(getResponse.body);
+        print('Current Record: $currentRecord');
+
+        // Get current student IDs
+        List<String> currentStudentIds = List<String>.from(currentRecord['students_ids'] ?? []);
+        
+        if (!currentStudentIds.contains(studentData['id'].toString())) {
+          currentStudentIds.add(studentData['id'].toString());
+
+          final updateResponse = await http.patch(
+            Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'encrypted_data': currentRecord['encrypted_data'],
+              'students_ids': currentStudentIds,
+              'status': currentRecord['status']
+            }),
+          );
+
+          if (updateResponse.statusCode == 200) {
+            _showMessage(context, 'Attendance marked successfully!');
+            return;
+          } else {
+            throw Exception('Failed to update attendance record: ${updateResponse.statusCode}');
+          }
+        } else {
+          _showMessage(context, 'Attendance already marked for this session');
+          return;
+        }
       } else {
-        _showMessage(context, 'No active session found on this tag');
+        _showMessage(context, 'No active session found');
       }
     } catch (e) {
+      print('Error marking attendance: $e');
       _showMessage(context, 'Error marking attendance. Please try again.');
-      print('Error: $e');
     }
   }
 
@@ -361,8 +371,15 @@ class StudentDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () => _onWillPop(context),
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (bool didPop) async {
+        if (didPop) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('KSU-Attendance System'),

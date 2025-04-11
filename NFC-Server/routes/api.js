@@ -89,20 +89,33 @@ router.put('/attendance/:id', (req, res) => {
   }
 });
 
-// Get specific attendance record
+// Get specific attendance record with error handling
 router.get('/attendance/:id', (req, res) => {
   try {
     const { id } = req.params;
+    console.log(`Fetching attendance record: ${id}`);
+    
     const data = DataHandler.readData('attendance') || [];
     const record = data.find(r => r.id === id);
     
     if (record) {
+      console.log('Record found:', record);
       res.json(record);
     } else {
-      res.status(404).json({ success: false, message: 'Record not found' });
+      console.log('Record not found');
+      res.status(404).json({ 
+        success: false, 
+        message: 'Record not found',
+        requestedId: id 
+      });
     }
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error fetching attendance record:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message,
+      requestedId: req.params.id 
+    });
   }
 });
 
@@ -120,134 +133,51 @@ router.get('/attendance', (req, res) => {
 router.patch('/attendance/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { encrypted_data, students_ids } = req.body;
     
-    // 1. Get all required data
-    const attendanceData = DataHandler.readData('attendance');
-    let instructorViewData = DataHandler.readData('instructor_view');
-    let studentsViewData = DataHandler.readData('students_view');
+    const data = DataHandler.readData('attendance') || [];
+    const index = data.findIndex(record => record.id === id);
     
-    // 2. Get the latest attendance record
-    const record = attendanceData.find(r => r.id === id);
-    if (!record || status !== 'ended') {
-      return res.status(404).json({ message: 'Record not found or not ending' });
-    }
-
-    // 3. Extract data from record
-    const courseId = record.course_id;
-    const instructorId = record.instructor_id;
-    const presentStudents = record.students_ids || [];
-    
-    // 4. Format date exactly like mark_absent.txt does
-    const attendanceDate = record.date.split(' ')[0];
-    const recordDate = new Date(attendanceDate);
-    const formattedDate = `${String(recordDate.getDate()).padStart(2, '0')}-${String(recordDate.getMonth() + 1).padStart(2, '0')}-${recordDate.getFullYear()}`;
-
-    // 5. Get enrolled students from instructor view
-    const enrolledStudents = Object.keys(instructorViewData[instructorId].courses[courseId].students);
-    const absentStudents = [];
-
-    // 6. Update instructor view first
-    enrolledStudents.forEach(studentId => {
-      if (!presentStudents.includes(studentId)) {
-        const student = instructorViewData[instructorId].courses[courseId].students[studentId];
-        
-        // Update percentage as mark_absent.txt does
-        const currentPercentage = parseInt(student.current_percentage.replace('%', ''));
-        const newPercentage = currentPercentage + 3;
-        student.current_percentage = `${newPercentage}%`;
-        
-        // Add absence date exactly like mark_absent.txt
-        if (!student.absence_dates) {
-          student.absence_dates = [formattedDate];
-        } else if (!student.absence_dates.includes(formattedDate)) {
-          student.absence_dates.push(formattedDate);
-        }
-        
-        absentStudents.push(studentId);
-        console.log(`Marked student ${studentId} absent in instructor view`);
-      }
-    });
-
-    // 7. Update students view exactly like mark_absent.txt
-    studentsViewData.read_only.forEach(student => {
-      if (!absentStudents.includes(student.student_id)) return;
+    if (index !== -1) {
+      // Store encrypted student IDs
+      data[index].encrypted_data = encrypted_data;
+      data[index].students_ids = students_ids; // Already encrypted IDs
       
-      const course = student.courses.find(c => c.course === courseId);
-      if (course) {
-        const currentPercentage = parseInt(course.current_percentage.replace('%', ''));
-        const newPercentage = currentPercentage + 3;
-        course.current_percentage = `${newPercentage}%`;
-        
-        if (!course.absence_dates) {
-          course.absence_dates = [formattedDate];
-        } else if (!course.absence_dates.includes(formattedDate)) {
-          course.absence_dates.push(formattedDate);
-        }
-        console.log(`Marked student ${student.student_id} absent in students view`);
+      if (DataHandler.writeData('attendance', data)) {
+        res.json({ success: true, message: 'Attendance record updated' });
+      } else {
+        throw new Error('Failed to update attendance record');
       }
-    });
-
-    // 8. Save all updates
-    record.status = 'ended';
-    DataHandler.writeData('attendance', attendanceData);
-    DataHandler.writeData('instructor_view', instructorViewData);
-    DataHandler.writeData('students_view', studentsViewData);
-
-    // 9. Return summary like mark_absent.txt
-    res.json({
-      success: true,
-      summary: {
-        totalEnrolled: enrolledStudents.length,
-        presentCount: presentStudents.length,
-        presentStudents: presentStudents,
-        absentCount: absentStudents.length,
-        absentStudents: absentStudents
-      }
-    });
-
+    } else {
+      res.status(404).json({ success: false, message: 'Record not found' });
+    }
   } catch (error) {
-    console.error('Error processing session end:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // Update attendance route with validation
-router.post('/attendance', [
-  sanitizeInput,
-  validateAttendanceData,
-], async (req, res) => {
+router.post('/attendance', async (req, res) => {
   try {
-    const { id, course_id, classroom, date, instructor_id } = req.body;
+    const { id, encrypted_data, status } = req.body;
     
-    // Validate input types
-    if (!id || typeof id !== 'string') {
-      return res.status(400).json({ error: 'Invalid ID format' });
-    }
-    
-    // Validate course_id format
-    if (!(/^[A-Z]{3,4}\d{3}$/.test(course_id))) {
-      return res.status(400).json({ error: 'Invalid course ID format' });
-    }
-
-    // Validate classroom format
-    if (!(/^[A-Z]-\d{3}$/.test(classroom))) {
-      return res.status(400).json({ error: 'Invalid classroom format' });
-    }
-
-    // Process validated data
-    const result = await DataHandler.createAttendanceRecord({
+    const newRecord = {
       id,
-      course_id,
-      classroom,
-      date,
-      instructor_id,
+      encrypted_data,
+      status,
       students_ids: []
-    });
+    };
 
-    res.json(result);
+    const data = DataHandler.readData('attendance') || [];
+    data.push(newRecord);
+
+    if (DataHandler.writeData('attendance', data)) {
+      res.json({ success: true, message: 'Attendance record created' });
+    } else {
+      throw new Error('Failed to create attendance record');
+    }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
