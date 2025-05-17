@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../nfc_service.dart';
 import 'dart:convert';
-import './login_screen.dart'; 
+import './login_screen.dart';
 import 'package:http/http.dart' as http;
-import '../services/encryption_service.dart'; 
+import '../services/encryption_service.dart';
 
 class StudentDashboard extends StatelessWidget {
   final Map<String, dynamic> studentData;
@@ -37,22 +37,24 @@ class StudentDashboard extends StatelessWidget {
       if (tagData['status'] == 'active') {
         final recordId = tagData['record_id'];
         print('Fetching attendance record: $recordId');
-        
+
         // Add retry mechanism for fetching attendance record
         int retries = 3;
         http.Response? getResponse;
-        
+
         while (retries > 0) {
           try {
             getResponse = await http.get(
-              Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+              Uri.parse(
+                  'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
             );
             if (getResponse.statusCode == 200) break;
-            
+
             retries--;
             if (retries > 0) {
               await Future.delayed(const Duration(seconds: 1));
-              print('Retrying attendance record fetch... ($retries attempts left)');
+              print(
+                  'Retrying attendance record fetch... ($retries attempts left)');
             }
           } catch (e) {
             print('Error fetching attendance record: $e');
@@ -60,20 +62,30 @@ class StudentDashboard extends StatelessWidget {
         }
 
         if (getResponse == null || getResponse.statusCode != 200) {
-          throw Exception('Failed to fetch attendance record after multiple attempts');
+          throw Exception(
+              'Failed to fetch attendance record after multiple attempts');
         }
 
         final currentRecord = jsonDecode(getResponse.body);
         print('Current Record: $currentRecord');
 
+        // Check if the session is still active
+        if (currentRecord['status'] != 'active') {
+          _showMessage(
+              context, 'This session has ended. Cannot mark attendance.');
+          return;
+        }
+
         // Get current student IDs
-        List<String> currentStudentIds = List<String>.from(currentRecord['students_ids'] ?? []);
-        
+        List<String> currentStudentIds =
+            List<String>.from(currentRecord['students_ids'] ?? []);
+
         if (!currentStudentIds.contains(studentData['id'].toString())) {
           currentStudentIds.add(studentData['id'].toString());
 
           final updateResponse = await http.patch(
-            Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+            Uri.parse(
+                'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'encrypted_data': currentRecord['encrypted_data'],
@@ -86,7 +98,8 @@ class StudentDashboard extends StatelessWidget {
             _showMessage(context, 'Attendance marked successfully!');
             return;
           } else {
-            throw Exception('Failed to update attendance record: ${updateResponse.statusCode}');
+            throw Exception(
+                'Failed to update attendance record: ${updateResponse.statusCode}');
           }
         } else {
           _showMessage(context, 'Attendance already marked for this session');
@@ -314,8 +327,7 @@ class StudentDashboard extends StatelessWidget {
                                                         ),
                                                       ],
                                                     ),
-                                                  ))
-                                              ,
+                                                  )),
                                       ],
                                     ),
                                   ),

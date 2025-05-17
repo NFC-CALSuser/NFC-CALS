@@ -82,7 +82,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
   Future<void> _startSession() async {
     if (selectedClass == null || selectedCourse == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select both course and classroom')),
+        const SnackBar(
+            content: Text('Please select both course and classroom')),
       );
       return;
     }
@@ -105,7 +106,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
       };
 
       // Encrypt session data for server
-      final encryptedData = await EncryptionService.encryptData(jsonEncode(sessionData));
+      final encryptedData =
+          await EncryptionService.encryptData(jsonEncode(sessionData));
 
       // Create attendance record with encrypted data
       await _createAttendanceRecord(recordId, now, encryptedData);
@@ -113,11 +115,12 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
       // Write encrypted data to NFC tag
       bool writeSuccess = await NFCService.writeNFCTag(jsonEncode(sessionData));
-      
+
       if (!writeSuccess) {
         // Clean up if write fails
         await http.delete(
-          Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+          Uri.parse(
+              'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
         );
         throw Exception('Failed to write to NFC tag');
       }
@@ -133,7 +136,6 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
       _showNFCMessage('Session started successfully', isSuccess: true);
       await Future.delayed(const Duration(seconds: 2));
       _hideNFCMessage();
-
     } catch (e) {
       print('Error starting session: $e');
       _showNFCMessage('Error: ${e.toString()}', isSuccess: false);
@@ -144,9 +146,10 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     }
   }
 
-  Future<void> _createAttendanceRecord(String recordId, DateTime startTime, Map<String, String> encryptedSessionData) async {
+  Future<void> _createAttendanceRecord(String recordId, DateTime startTime,
+      Map<String, String> encryptedSessionData) async {
     print('Creating attendance record...');
-    
+
     try {
       final response = await http.post(
         Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance'),
@@ -166,7 +169,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
       // Verify record creation
       final verifyResponse = await http.get(
-        Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
+        Uri.parse(
+            'https://cals-server-12aff9883ee5.herokuapp.com/attendance/$recordId'),
       );
 
       if (verifyResponse.statusCode != 200) {
@@ -202,70 +206,74 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
         // Get current attendance record
         final getResponse = await http.get(
-          Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/${_activeSessionId}'),
+          Uri.parse(
+              'https://cals-server-12aff9883ee5.herokuapp.com/attendance/${_activeSessionId}'),
         );
 
         if (getResponse.statusCode == 200) {
           final currentRecord = jsonDecode(getResponse.body);
-          
-          // Update session status to ended first
-          final updateResponse = await http.patch(
-            Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/attendance/${_activeSessionId}'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'status': 'ended',
-              'encrypted_data': currentRecord['encrypted_data'],
-              'students_ids': currentRecord['students_ids']
-            }),
-          );
 
-          if (updateResponse.statusCode != 200) {
-            throw Exception('Failed to update session status');
-          }
-
-          // Process attendance marking
+          // Process attendance marking first
           try {
             // Get instructor view data
             final instructorResponse = await http.get(
-              Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
+              Uri.parse(
+                  'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
             );
 
             if (instructorResponse.statusCode != 200) {
               throw Exception('Failed to fetch instructor data');
             }
 
-            final instructorData = jsonDecode(instructorResponse.body);
-            final courseData = instructorData[widget.instructorId]['courses'][_activeSessionData!['course']];
-            
+            final jsonData = jsonDecode(instructorResponse.body);
+            final instructorData = jsonData['20242024'];
+            final courseData =
+                instructorData['courses'][_activeSessionData!['course']];
+
             // Get enrolled students
             final enrolledStudents = courseData['students'].keys.toList();
             final presentStudents = currentRecord['students_ids'];
-            
+
             // Calculate absent students
-            final absentStudents = enrolledStudents.where((id) => !presentStudents.contains(id)).toList();
+            final absentStudents = enrolledStudents
+                .where((id) => !presentStudents.contains(id))
+                .toList();
 
             // Update attendance records
             for (final studentId in absentStudents) {
               final student = courseData['students'][studentId];
-              int currentPercentage = int.parse(student['current_percentage'].replaceAll('%', ''));
+              int currentPercentage =
+                  int.parse(student['current_percentage'].replaceAll('%', ''));
               currentPercentage += 3;
               student['current_percentage'] = '$currentPercentage%';
 
               if (student['absence_dates'] == null) {
                 student['absence_dates'] = [];
               }
-              student['absence_dates'].add(DateTime.now().toIso8601String().split('T')[0]);
+              student['absence_dates']
+                  .add(DateTime.now().toIso8601String().split('T')[0]);
             }
 
             // Update instructor view
             final updateInstructorResponse = await http.put(
-              Uri.parse('https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
+              Uri.parse(
+                  'https://cals-server-12aff9883ee5.herokuapp.com/instructor_view'),
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode(instructorData),
+              body: jsonEncode(jsonData),
             );
 
             if (updateInstructorResponse.statusCode != 200) {
               throw Exception('Failed to update instructor view');
+            }
+
+            // Delete the attendance record
+            final deleteResponse = await http.delete(
+              Uri.parse(
+                  'https://cals-server-12aff9883ee5.herokuapp.com/attendance/${_activeSessionId}'),
+            );
+
+            if (deleteResponse.statusCode != 200) {
+              throw Exception('Failed to delete attendance record');
             }
 
             setState(() {
@@ -274,7 +282,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
               _activeSessionData = null;
               _sessionTimer?.cancel();
             });
-            
+
             _showNFCMessage('Session ended successfully', isSuccess: true);
             await Future.delayed(const Duration(seconds: 2));
             _hideNFCMessage();
@@ -289,7 +297,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     } catch (e) {
       print('Error ending session: $e');
       if (!mounted) return;
-      _showNFCMessage('Error ending session: ${e.toString()}', isSuccess: false);
+      _showNFCMessage('Error ending session: ${e.toString()}',
+          isSuccess: false);
       await Future.delayed(const Duration(seconds: 2));
       _hideNFCMessage();
     } finally {
@@ -641,7 +650,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope( // Replace WillPopScope with PopScope
+    return PopScope(
+      // Replace WillPopScope with PopScope
       canPop: !_hasActiveSession,
       onPopInvoked: (bool didPop) async {
         if (didPop) return;
@@ -910,18 +920,19 @@ class _InstructorDashboardState extends State<InstructorDashboard> {
     );
   }
 
-  Future<VerificationResult> _verifyNFCTag(Map<String, dynamic> expectedData) async {
+  Future<VerificationResult> _verifyNFCTag(
+      Map<String, dynamic> expectedData) async {
     try {
       String result = await NFCService.readNFCTag();
       Map<String, dynamic> tagData = jsonDecode(result);
-      
+
       // Verify essential fields
       if (tagData['record_id'] != expectedData['record_id'] ||
           tagData['course'] != expectedData['course'] ||
           tagData['classroom'] != expectedData['classroom']) {
         return VerificationResult(false, 'Tag data verification failed');
       }
-      
+
       return VerificationResult(true, null);
     } catch (e) {
       return VerificationResult(false, 'Verification error: $e');
